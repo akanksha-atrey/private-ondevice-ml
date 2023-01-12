@@ -5,3 +5,5 @@ venv/
 data/
 .ipynb_checkpoints/
 models/
+updates/
+figures/
