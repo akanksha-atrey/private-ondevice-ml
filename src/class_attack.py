@@ -61,7 +61,7 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf'):
 	df_out = pd.DataFrame(columns=['model_type', 'num_extra_features', 'query_size', 'pred_recovered', 'runtime'])
 	X_cols = list(X.columns)
 
-	for num_extra_feat in [1,5,10,50,100,200,500,1000,2000,5000,10000]:
+	for num_extra_feat in [10,1000,5000]:
 		for query_size in [10,20,50,100,250,500,750,1000,2000,5000]:
 			start_time = time.time()
 
@@ -90,7 +90,7 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf'):
 									'pred_recovered': attack_acc, \
 									'runtime': end_time}, ignore_index=True)
 
-		df_out.to_csv('./results/{}/attack_rand_query_bb.csv'.format('UCI_HAR'), index=False)
+		df_out.to_csv('./results/{}/attack_bb_rand_query_{}.csv'.format('UCI_HAR', model_type), index=False)
 	
 	return df_out
 
@@ -177,7 +177,7 @@ def attack_bb_query_extra(model, X, y, model_type='rf'):
 									'pred_recovered': attack_acc, \
 									'runtime': runtime}, ignore_index=True)
 
-			df_out.to_csv('./results/{}/attack_bb_unused_feat.csv'.format('UCI_HAR'), index=False)
+			df_out.to_csv('./results/{}/attack_bb_unused_feat_{}.csv'.format('UCI_HAR', model_type), index=False)
 
 	return df_out
 
@@ -187,6 +187,10 @@ def main():
 	parser.add_argument('-data_name', type=str, default='UCI_HAR')
 	parser.add_argument('-num_users', type=int, default=100)
 	parser.add_argument('-model_type', type=str, default='rf', help='rf, lr or dnn')
+	parser.add_argument('-wb_query_attack', type=bool)
+	parser.add_argument('-wb_num_feat_attack', type=bool)
+	parser.add_argument('-bb_query_attack', type=bool)
+	parser.add_argument('-bb_unused_feat_attack', type=bool)
 	args = parser.parse_args()
 
 	X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
@@ -211,34 +215,32 @@ def main():
 
 	## QUERY ATTACK
 	#white-box
-	attack_results = attack_wb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
-	if os.path.isfile('./results/{}/attack_rand_query.csv'.format(args.data_name)):
-		df_results = pd.read_csv('./results/{}/attack_rand_query.csv'.format(args.data_name))
-		df_results = df_results.append(attack_results, ignore_index=True)
-		df_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
-	else:
-		attack_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
+	if args.wb_query_attack:
+		attack_results = attack_wb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
+		if os.path.isfile('./results/{}/attack_rand_query.csv'.format(args.data_name)):
+			df_results = pd.read_csv('./results/{}/attack_rand_query.csv'.format(args.data_name))
+			df_results = df_results.append(attack_results, ignore_index=True)
+			df_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
+		else:
+			attack_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
 
 	#black-box
-	attack_results = attack_bb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
-	# if os.path.isfile('./results/{}/attack_rand_query_bb.csv'.format(args.data_name)):
-	# 	df_results = pd.read_csv('./results/{}/attack_rand_query_bb.csv'.format(args.data_name))
-	# 	df_results = df_results.append(attack_results, ignore_index=True)
-	# 	df_results.to_csv('./results/{}/attack_rand_query_bb.csv'.format(args.data_name), index=False)
-	# else:
-	# 	attack_results.to_csv('./results/{}/attack_rand_query_bb.csv'.format(args.data_name), index=False)
+	if args.bb_query_attack:
+		attack_results = attack_bb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
 
 	## NUMBER OF FEATURES ATTACK (wb)
-	attack_results = attack_wb_rand_feature_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
-	if os.path.isfile('./results/{}/attack_rand_feat.csv'.format(args.data_name)):
-		df_results = pd.read_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name))
-		df_results = df_results.append(attack_results, ignore_index=True)
-		df_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
-	else:
-		attack_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
+	if args.wb_num_feat_attack:
+		attack_results = attack_wb_rand_feature_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
+		if os.path.isfile('./results/{}/attack_rand_feat.csv'.format(args.data_name)):
+			df_results = pd.read_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name))
+			df_results = df_results.append(attack_results, ignore_index=True)
+			df_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
+		else:
+			attack_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
 
 	## NUMBER OF UNUSED FEATURES (bb)
-	attack_results = attack_bb_query_extra(model, X_rand_users, y_rand_users, model_type=args.model_type)
+	if args.bb_unused_feat_attack:
+		attack_results = attack_bb_query_extra(model, X_rand_users, y_rand_users, model_type=args.model_type)
 
 if __name__ == '__main__':
 	main()
