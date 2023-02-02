@@ -1,3 +1,8 @@
+'''
+Author: Akanksha Atrey
+Description: This file contains implementation of attacks on trained ML models to leak class information.
+'''
+
 from src.models_har import Net
 
 import os
@@ -58,7 +63,7 @@ def attack_wb_rand_query_size(model, X, y, model_type='rf'):
 Attack to assess how non model input features affect attack performance (run time).
 '''
 def attack_bb_rand_query_size(model, X, y, model_type='rf'):
-	df_out = pd.DataFrame(columns=['model_type', 'num_extra_features', 'query_size', 'pred_recovered', 'runtime'])
+	df_out = pd.DataFrame(columns=['model_type', 'num_extra_features', 'query_size', 'accuracy', 'runtime'])
 	X_cols = list(X.columns)
 
 	for num_extra_feat in [10,1000,5000]:
@@ -75,7 +80,7 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf'):
 			
 			#get results
 			if model_type == 'dnn':
-				_, result_attack = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+				_, result_attack = torch.max(model(torch.from_numpy(X_augment[X_cols].values).float()).data, 1)
 			else:
 				result_attack = model.predict(X_augment[X_cols])
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
@@ -87,10 +92,10 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf'):
 			df_out = df_out.append({'model_type': model_type, \
 									'num_extra_features': num_extra_feat, \
 									'query_size': query_size, \
-									'pred_recovered': attack_acc, \
+									'accuracy': attack_acc, \
 									'runtime': end_time}, ignore_index=True)
 
-		df_out.to_csv('./results/{}/attack_bb_rand_query_{}.csv'.format('UCI_HAR', model_type), index=False)
+		df_out.to_csv('./results/{}/attack/attack_bb_rand_query_{}.csv'.format('UCI_HAR', model_type), index=False)
 	
 	return df_out
 
@@ -164,7 +169,7 @@ def attack_bb_query_extra(model, X, y, model_type='rf'):
 			
 			#get output using black box inference
 			if model_type == 'dnn':
-				_, result_attack = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+				_, result_attack = torch.max(model(torch.from_numpy(X_augment[X_cols].values).float()).data, 1)
 			else:
 				result_attack = model.predict(X_augment[X_cols])
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
@@ -174,10 +179,10 @@ def attack_bb_query_extra(model, X, y, model_type='rf'):
 			df_out = df_out.append({'model_type': model_type, \
 									'num_extra_features': num_extra_feat, \
 									'query_size': query_size, \
-									'pred_recovered': attack_acc, \
+									'accuracy': attack_acc, \
 									'runtime': runtime}, ignore_index=True)
 
-			df_out.to_csv('./results/{}/attack_bb_unused_feat_{}.csv'.format('UCI_HAR', model_type), index=False)
+			df_out.to_csv('./results/{}/attack/attack_bb_unused_feat_{}.csv'.format('UCI_HAR', model_type), index=False)
 
 	return df_out
 
@@ -217,12 +222,12 @@ def main():
 	#white-box
 	if args.wb_query_attack:
 		attack_results = attack_wb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
-		if os.path.isfile('./results/{}/attack_rand_query.csv'.format(args.data_name)):
-			df_results = pd.read_csv('./results/{}/attack_rand_query.csv'.format(args.data_name))
+		if os.path.isfile('./results/{}/attack/attack_rand_query.csv'.format(args.data_name)):
+			df_results = pd.read_csv('./results/{}/attack/attack_rand_query.csv'.format(args.data_name))
 			df_results = df_results.append(attack_results, ignore_index=True)
-			df_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
+			df_results.to_csv('./results/{}/attack/attack_rand_query.csv'.format(args.data_name), index=False)
 		else:
-			attack_results.to_csv('./results/{}/attack_rand_query.csv'.format(args.data_name), index=False)
+			attack_results.to_csv('./results/{}/attack/attack_rand_query.csv'.format(args.data_name), index=False)
 
 	#black-box
 	if args.bb_query_attack:
@@ -231,12 +236,12 @@ def main():
 	## NUMBER OF FEATURES ATTACK (wb)
 	if args.wb_num_feat_attack:
 		attack_results = attack_wb_rand_feature_size(model, X_rand_users, y_rand_users, model_type=args.model_type)
-		if os.path.isfile('./results/{}/attack_rand_feat.csv'.format(args.data_name)):
-			df_results = pd.read_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name))
+		if os.path.isfile('./results/{}/attack/attack_rand_feat.csv'.format(args.data_name)):
+			df_results = pd.read_csv('./results/{}/attack/attack_rand_feat.csv'.format(args.data_name))
 			df_results = df_results.append(attack_results, ignore_index=True)
-			df_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
+			df_results.to_csv('./results/{}/attack/attack_rand_feat.csv'.format(args.data_name), index=False)
 		else:
-			attack_results.to_csv('./results/{}/attack_rand_feat.csv'.format(args.data_name), index=False)
+			attack_results.to_csv('./results/{}/attack/attack_rand_feat.csv'.format(args.data_name), index=False)
 
 	## NUMBER OF UNUSED FEATURES (bb)
 	if args.bb_unused_feat_attack:
