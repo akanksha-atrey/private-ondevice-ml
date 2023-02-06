@@ -86,7 +86,7 @@ def attack_db_query_distance(model, X_seed_for_classes, model_type='rf', num_que
 
 def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf', num_queries=500):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'num_same_class', \
-							'type', 'pca_c1', 'pca_c2'])
+							'type', 'pca_c1', 'pca_c2', 'max_prob'])
 
 	for X_seed in X_seed_for_classes:
 		#get seed class
@@ -104,10 +104,12 @@ def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf'
 
 		#predict using model and assess class
 		if model_type == 'dnn':
-			_, c = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+			max_prob, c = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
 			c = c.numpy()
+			max_prob = max_prob.numpy()
 		else:
 			c = model.predict(X_augment)
+			max_prob = np.max(model.predict_proba(X_augment), axis=1)
 		df_pred['noise_class'] = c
 
 		#assess cosine similarity in queries
@@ -128,6 +130,7 @@ def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf'
 			df_same['num_query'] = num_queries
 			df_same['type'] = 'same'
 			df_same['num_same_class'] = num_same_class
+			df_same['max_prob'] = max_prob[same_class_indices]
 
 			# df_diff = pd.DataFrame(X_diff_decomposed, columns=['pca_c1', 'pca_c2'])
 			# df_diff['model_type'] = model_type
