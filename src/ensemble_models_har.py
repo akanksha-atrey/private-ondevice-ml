@@ -98,7 +98,36 @@ def predict_weighted(model, X, y, weights=None, num_models=10, model_type='rf'):
 	
 	pred_weighted = np.average(np.array(pred_proba), axis=0, weights=weights).argmax(axis=1)
 	accuracy = (pred_weighted == y).sum()/len(X)
-	print("Ensemble Accuracy: ", accuracy)
+
+	return pred_weighted, accuracy, m_accuracies
+
+def predict_weighted_diverse(models, X, y, weights=None, num_models=10):
+	if weights is None:
+		weights = np.random.uniform(size=num_models*3)
+		weights = weights / weights.sum()
+	
+	pred_proba = []
+	m_accuracies = []
+	model_types = ['rf', 'lr', 'dnn']
+	for m,model_type in enumerate(model_types):
+		mods = models[m]
+		mods = mods.estimators_ if model_type == 'rf' else mods
+
+		for i,m in enumerate(mods):
+			if model_type != 'dnn':
+				pred_proba.append(m.predict_proba(X))
+				m_accuracies.append(m.score(X,y))
+			else:
+				m.eval()
+				X_tensor = torch.from_numpy(X.values).float()
+				outputs = m(X_tensor).data
+
+				pred_proba.append(outputs.numpy())
+				_, predicted = torch.max(outputs.data, 1)
+				m_accuracies.append((predicted.numpy() == y).mean())	
+		
+	pred_weighted = np.average(np.array(pred_proba), axis=0, weights=weights).argmax(axis=1)
+	accuracy = (pred_weighted == y).sum()/len(X)
 
 	return pred_weighted, accuracy, m_accuracies
 
@@ -106,9 +135,12 @@ def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-data_name', type=str, default='UCI_HAR', help='name of the dataset')
 	parser.add_argument('-model_type', type=str, default='rf', help='rf, lr or dnn')
-	parser.add_argument('-num_models', type=int, default=10, help='number of decision trees in RF')
+	parser.add_argument('-num_models', type=int, default=10, help='number of models in ensemble')
+	parser.add_argument('-with_replacement', type=str, default='true', help='replace while resampling data')
 	args = parser.parse_args()
 
+	replace = True if args.with_replacement.lower() == 'true' else False
+	
 	# load data
 	X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
 	y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
@@ -128,7 +160,7 @@ def main():
 	X_train_bootstrapped = []
 	y_train_bootstrapped = []
 	for n in range(args.num_models):
-		resampled_ix = resample(range(len(X_train)))
+		resampled_ix = resample(range(len(X_train)), replace=replace, n_samples=int(len(X_train)/args.num_models), random_state=7)
 		X_train_bootstrapped.append(X_train.iloc[resampled_ix])
 		y_train_bootstrapped.append(y_train[resampled_ix])
 
@@ -137,19 +169,36 @@ def main():
 		rf_model = train_rf(X_train, y_train, args.num_models)
 		pred_out, acc, ind_acc = predict_weighted(rf_model, X_test, y_test, num_models=args.num_models, model_type=args.model_type)
 
-		with open('./models/UCI_HAR/rf_ensemble{}.pkl'.format(args.num_models), 'wb') as f:
+		with open('./models/UCI_HAR/rf_ensemble{}.pkl'.format(args.num_models, replace), 'wb') as f:
 			pkl.dump(rf_model, f)
 	elif args.model_type == 'lr':
 		lr_model = train_lr(X_train_bootstrapped, y_train_bootstrapped, args.num_models)
 		pred_out, acc, ind_acc  = predict_weighted(lr_model, X_test, y_test, num_models=args.num_models, model_type=args.model_type)
 
-		with open('./models/UCI_HAR/lr_ensemble{}.pkl'.format(args.num_models), 'wb') as f:
+		with open('./models/UCI_HAR/lr_ensemble{}.pkl'.format(args.num_models, replace), 'wb') as f:
 			pkl.dump(lr_model, f)
 	elif args.model_type == 'dnn':
 		dnn_model = train_dnn(X_train_bootstrapped, y_train_bootstrapped, X_train.shape[1], 6, num_models=args.num_models)
 		pred_out, acc, ind_acc = predict_weighted(dnn_model, X_test, y_test, num_models=args.num_models, model_type=args.model_type)
 
-		torch.save(dnn_model, './models/UCI_HAR/dnn_ensemble{}.pt'.format(args.num_models))
+		torch.save(dnn_model, './models/UCI_HAR/dnn_ensemble{}.pt'.format(args.num_models, replace))
+
+	# assess ensemble with diverse models
+	with open('./models/UCI_HAR/rf_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
+		rf_model = pkl.load(f)
+	with open('./models/UCI_HAR/lr_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
+		lr_model = pkl.load(f)
+	dnn_model = torch.load('./models/UCI_HAR/dnn_ensemble{}.pt'.format(args.num_models))
+	models = [rf_model, lr_model, dnn_model]
+
+	_, acc, _ = predict_weighted(rf_model, X_test, y_test, num_models=args.num_models, model_type='rf')
+	print("RF ACC: ", acc)
+	_, acc, _ = predict_weighted(lr_model, X_test, y_test, num_models=args.num_models, model_type='lr')
+	print("LR ACC: ", acc)
+	_, acc, _ = predict_weighted(dnn_model, X_test, y_test, num_models=args.num_models, model_type='dnn')
+	print("DNN ACC: ", acc)
+	pred_out, acc, ind_acc = predict_weighted_diverse(models, X_test, y_test, num_models=args.num_models)
+	print("DIVERSE ACC: ", acc)
 
 	# save output
 	mlist = [f'ensemble_m{i+1}' for i in range(args.num_models)]
