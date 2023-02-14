@@ -17,8 +17,9 @@ echo "SLURM_JOBID: " $SLURM_JOBID
 echo "Starting to run bb query attack..."
 
 modeltype=$1
+ensemble=$2
 
-python3 -m src.class_attack -model_type $modeltype -bb_query_attack true
+python3 -m src.class_attack -model_type $modeltype -bb_query_attack true -ensemble $ensemble
 
 wait
 
