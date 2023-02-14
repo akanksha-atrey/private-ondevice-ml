@@ -4,6 +4,7 @@ import pandas as pd
 import pickle as pkl
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
@@ -24,6 +25,14 @@ def logistic_regression(X_train, y_train, X_test, y_test):
 
 def random_forest(X_train, y_train, X_test, y_test):
 	clf = RandomForestClassifier(n_estimators=100, random_state=7)
+	clf.fit(X_train, y_train)
+	accuracy = clf.score(X_test, y_test)
+	print(f'RF test accuracy: {accuracy:.2f}')
+
+	return clf
+
+def decision_tree(X_train, y_train, X_test, y_test):
+	clf = DecisionTreeClassifier(random_state=7)
 	clf.fit(X_train, y_train)
 	accuracy = clf.score(X_test, y_test)
 	print(f'RF test accuracy: {accuracy:.2f}')
@@ -93,6 +102,11 @@ def main():
 	rf_model = random_forest(X_train, y_train, X_test, y_test)
 	with open('./models/UCI_HAR/rf.pkl', 'wb') as f:
 		pkl.dump(rf_model, f)
+
+	#train dt
+	dt_model = decision_tree(X_train, y_train, X_test, y_test)
+	with open('./models/UCI_HAR/dt.pkl', 'wb') as f:
+		pkl.dump(dt_model, f)
 
 	#train dnn
 	X_train = torch.from_numpy(X_train.values).float()
