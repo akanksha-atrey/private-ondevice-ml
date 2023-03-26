@@ -184,11 +184,11 @@ def main():
 		torch.save(dnn_model, './models/UCI_HAR/dnn_ensemble{}.pt'.format(args.num_models, replace))
 
 	# assess ensemble with diverse models
-	with open('./models/UCI_HAR/rf_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
+	with open('./models/UCI_HAR/activity_recognition/rf_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
 		rf_model = pkl.load(f)
-	with open('./models/UCI_HAR/lr_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
+	with open('./models/UCI_HAR/activity_recognition/lr_ensemble{}.pkl'.format(args.num_models), 'rb') as f:
 		lr_model = pkl.load(f)
-	dnn_model = torch.load('./models/UCI_HAR/dnn_ensemble{}.pt'.format(args.num_models))
+	dnn_model = torch.load('./models/UCI_HAR/activity_recognition/dnn_ensemble{}.pt'.format(args.num_models))
 	models = [rf_model, lr_model, dnn_model]
 
 	_, acc, _ = predict_weighted(rf_model, X_test, y_test, num_models=args.num_models, model_type='rf')

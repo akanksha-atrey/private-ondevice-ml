@@ -18,7 +18,7 @@ from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
 import matplotlib.pyplot as plt
 
-def attack_db_query_distance(model, X_seed_for_classes, model_type='rf', num_queries=1000, ensemble=1):
+def attack_db_query_distance(model, X_seed_for_classes, noise_range=(-1,1), model_type='rf', num_queries=1000, ensemble=1):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'num_same_class', \
 							'cos_sim_same', 'cos_sim_diff', 'cos_sim_same_std', 'cos_sim_diff_std', 'cos_sim_all', \
 							'euc_dist_same', 'euc_dist_diff', 'euc_dist_same_std', 'euc_dist_diff_std', 'euc_dist_all'])
@@ -38,8 +38,9 @@ def attack_db_query_distance(model, X_seed_for_classes, model_type='rf', num_que
 		df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'seed_class': seed_c})
 
 		#augment and add noise
-		rand_noise = np.random.uniform(-1,1,size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
+		rand_noise = np.random.uniform(noise_range[0],noise_range[1],size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
 		X_augment = X_augment + rand_noise
+		X_augment = X_augment.clip(-1,1)
 
 		#predict using model and assess class
 		if ensemble > 1:
@@ -101,7 +102,7 @@ def attack_db_query_distance(model, X_seed_for_classes, model_type='rf', num_que
 
 	return df_out
 
-def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf', num_queries=500, ensemble=1):
+def attack_db_query_distribution(model, X_seed_for_classes, pca, noise_range=(-1,1), model_type='rf', num_queries=500, ensemble=1):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'num_same_class', \
 							'type', 'pca_c1', 'pca_c2', 'max_prob'])
 
@@ -119,8 +120,9 @@ def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf'
 		df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'seed_class': seed_c})
 
 		#augment and add noise
-		rand_noise = np.random.uniform(-1,1,size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
+		rand_noise = np.random.uniform(noise_range[0],noise_range[1],size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
 		X_augment = X_augment + rand_noise
+		X_augment = X_augment.clip(-1,1)
 
 		#predict using model and assess class
 		if ensemble > 1:
@@ -166,7 +168,7 @@ def attack_db_query_distribution(model, X_seed_for_classes, pca, model_type='rf'
 
 	return df_out
 
-def attack_db_query(model, X_seed_for_classes, model_type='rf', ensemble=1):
+def attack_db_query(model, X_seed_for_classes, noise_range=(-1,1), model_type='rf', ensemble=1):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'same_class_mean', 'same_class_std'])
 
 	for query_size in [10,20,50,100,250,500,750,1000,2000,5000]:
@@ -184,8 +186,9 @@ def attack_db_query(model, X_seed_for_classes, model_type='rf', ensemble=1):
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'seed_class': seed_c})
 
 			#augment and add noise
-			rand_noise = np.random.uniform(-1,1,size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
+			rand_noise = np.random.uniform(noise_range[0],noise_range[1],size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
 			X_augment = X_augment + rand_noise
+			X_augment = X_augment.clip(-1,1)
 
 			#predict using model and assess class
 			if ensemble > 1:
@@ -216,6 +219,7 @@ def main():
 	parser.add_argument('-data_name', type=str, default='UCI_HAR')
 	parser.add_argument('-num_users', type=int, default=100)
 	parser.add_argument('-model_type', type=str, default='dt', help='rf, dt, lr or dnn')
+	parser.add_argument('-noise_bounds', type=float, default='-1 1', nargs='+', help='noise will be drawn from uniform distribution between bounds')
 	parser.add_argument('-ensemble', default=1, type=int, help='1 if using single model, else number of models in ensemble')
 	parser.add_argument('-exp_num_query', type=bool)
 	parser.add_argument('-exp_query_distance', type=bool)
@@ -234,16 +238,16 @@ def main():
 	#load model
 	ensemble = '_ensemble'+str(args.ensemble) if args.ensemble > 1 else ''
 	if args.model_type == 'rf':
-		with open('./models/{}/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'lr':
-		with open('./models/{}/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dt':
-		with open('./models/{}/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dnn':
-		model = torch.load('./models/{}/dnn{}.pt'.format(args.data_name, ensemble))
+		model = torch.load('./models/{}/activity_recognition/dnn{}.pt'.format(args.data_name, ensemble))
 
 	#pick random adversarial users
 	random.seed(10)
@@ -266,7 +270,8 @@ def main():
 
 	## DB ATTACK
 	if args.exp_num_query:
-		attack_results = attack_db_query(model, seed_for_classes, args.model_type, args.ensemble)
+		attack_results = attack_db_query(model, seed_for_classes, noise_range=tuple(args.noise_bounds), model_type=args.model_type, ensemble=args.ensemble)
+		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
 		if os.path.isfile('./results/{}/attack/attack{}_db_query.csv'.format(args.data_name, ensemble)):
 			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query.csv'.format(args.data_name, ensemble))
 			df_results = df_results.append(attack_results, ignore_index=True)
@@ -275,7 +280,8 @@ def main():
 			attack_results.to_csv('./results/{}/attack/attack{}_db_query.csv'.format(args.data_name, ensemble), index=False)
 
 	if args.exp_query_distance:
-		attack_results = attack_db_query_distance(model, seed_for_classes, args.model_type, 500, args.ensemble)
+		attack_results = attack_db_query_distance(model, seed_for_classes, noise_range=tuple(args.noise_bounds), model_type=args.model_type, num_queries=100, ensemble=args.ensemble)
+		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
 		if os.path.isfile('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble)):
 			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble))
 			df_results = df_results.append(attack_results, ignore_index=True)
@@ -286,7 +292,8 @@ def main():
 	if args.exp_query_distribution:
 		pca = PCA(n_components=2)
 		pca.fit(X=X_train)
-		attack_results = attack_db_query_distribution(model, seed_for_classes, pca, args.model_type, args.ensemble)
+		attack_results = attack_db_query_distribution(model, seed_for_classes, pca, noise_range=tuple(args.noise_bounds), model_type=args.model_type, ensemble=args.ensemble)
+		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
 		if os.path.isfile('./results/{}/attack/attack{}_db_query_distribution.csv'.format(args.data_name, ensemble)):
 			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_distribution.csv'.format(args.data_name, ensemble))
 			df_results = df_results.append(attack_results, ignore_index=True)

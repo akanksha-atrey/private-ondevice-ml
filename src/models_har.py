@@ -95,17 +95,17 @@ def main():
 
 	#train lr
 	lr_model = logistic_regression(X_train, y_train, X_test, y_test)
-	with open('./models/UCI_HAR/lr.pkl', 'wb') as f:
+	with open('./models/UCI_HAR/activity_recognition/lr.pkl', 'wb') as f:
 		pkl.dump(lr_model, f)
 
 	#train rf
 	rf_model = random_forest(X_train, y_train, X_test, y_test)
-	with open('./models/UCI_HAR/rf.pkl', 'wb') as f:
+	with open('./models/UCI_HAR/activity_recognition/rf.pkl', 'wb') as f:
 		pkl.dump(rf_model, f)
 
 	#train dt
 	dt_model = decision_tree(X_train, y_train, X_test, y_test)
-	with open('./models/UCI_HAR/dt.pkl', 'wb') as f:
+	with open('./models/UCI_HAR/activity_recognition/dt.pkl', 'wb') as f:
 		pkl.dump(dt_model, f)
 
 	#train dnn
@@ -121,7 +121,7 @@ def main():
 
 	model = dnn(train_loader, X_train.shape[1], 6)
 	dnn_predict(model, X_test, y_test)
-	torch.save(model, './models/UCI_HAR/dnn.pt')
+	torch.save(model, './models/UCI_HAR/activity_recognition/dnn.pt')
 
 if __name__ == '__main__':
 	main()

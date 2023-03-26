@@ -15,6 +15,9 @@ import time
 import random
 
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 import matplotlib.pyplot as plt
 
@@ -208,7 +211,6 @@ def attack_bb_query_extra(model, X, y, model_type='rf', ensemble=1):
 
 	return df_out
 
-
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-data_name', type=str, default='UCI_HAR')
@@ -228,16 +230,16 @@ def main():
 	#load model
 	ensemble = '_ensemble'+str(args.ensemble) if args.ensemble > 1 else ''
 	if args.model_type == 'rf':
-		with open('./models/{}/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'lr':
-		with open('./models/{}/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dt':
-		with open('./models/{}/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/activity_recognition/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dnn':
-		model = torch.load('./models/{}/dnn{}.pt'.format(args.data_name, ensemble))
+		model = torch.load('./models/{}/activity_recognition/dnn{}.pt'.format(args.data_name, ensemble))
 
 	#pick 100 random adversarial users
 	random.seed(10)
@@ -255,6 +257,10 @@ def main():
 			df_results.to_csv('./results/{}/attack/attack{}_rand_query.csv'.format(args.data_name, ensemble), index=False)
 		else:
 			attack_results.to_csv('./results/{}/attack/attack{}_rand_query.csv'.format(args.data_name, ensemble), index=False)
+
+	# updated_X, classes_count = attack_fgsm(X_rand_users, y_rand_users, model, model_type='dnn')
+	# print(classes_count)
+	attack_model_inversion(model, X_rand_users, y_rand_users)
 
 	#black-box
 	if args.bb_query_attack:
