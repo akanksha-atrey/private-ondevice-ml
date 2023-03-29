@@ -3,6 +3,7 @@ Author: Akanksha Atrey
 Description: This file contains implementation of an autoencoder based defense mechanism.
 '''
 
+import os
 import argparse
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, pairwise_distances
 from scipy.stats import entropy
+from scipy import spatial
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -87,9 +89,9 @@ def train_lr(X_train, y_train, X_test, y_test):
 	clf.fit(X_train, y_train)
 
 	accuracy = clf.score(X_train, y_train)
-	print(f'RF train accuracy: {accuracy:.2f}')
+	print(f'LR train accuracy: {accuracy:.2f}')
 	accuracy = clf.score(X_test, y_test)
-	print(f'RF test accuracy: {accuracy:.2f}')
+	print(f'LR test accuracy: {accuracy:.2f}')
 
 	return clf
 
@@ -158,28 +160,37 @@ def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_sta
 	else:
 		pred = model.predict(encoding.reshape(1,-1))[0]
 
-	ed_raw_min = 0
-	ed_raw_median = 0
-	ed_enc_min = 0
-	ed_enc_median = 0
+	stime_ed = time.time()
+	ed_raw_min, ed_raw_median, ed_raw_sum = 0, 0, 0
+	ed_enc_min, ed_enc_median, ed_enc_sum = 0, 0, 0
 	# Difference in input to closest element in class c
 	if prior_queries_raw is not None:
 		prior_queries_rc = prior_queries_raw[prior_queries_raw['pred_c']==pred]
 		prior_queries_ec = prior_queries_enc[prior_queries_enc['pred_c']==pred]
 
 		if len(prior_queries_rc) != 0:
-			ed_raw_min = pairwise_distances(np.array(x).reshape(1,-1), prior_queries_rc.drop(columns=['pred_c', 'user_id']), metric="euclidean").min(axis=1)[0]
-			ed_raw_median = np.median(pairwise_distances(np.array(x).reshape(1,-1), prior_queries_rc.drop(columns=['pred_c', 'user_id']), metric="euclidean"), axis=1)
-			ed_enc_min = pairwise_distances(encoding.reshape(1,-1), prior_queries_ec.drop(columns=['pred_c', 'user_id']), metric="euclidean").min(axis=1)[0]
-			ed_enc_median = np.median(pairwise_distances(encoding.reshape(1,-1), prior_queries_ec.drop(columns=['pred_c', 'user_id']), metric="euclidean"), axis=1)
+			distances_raw = spatial.distance.cdist(np.array(x).reshape(1,-1), prior_queries_rc.drop(columns=['pred_c', 'user_id']), metric='euclidean')
+			ed_raw_min = distances_raw.min(axis=1)[0]
+			ed_raw_median = np.median(distances_raw, axis=1)[0]
+			ed_raw_sum = np.sum(distances_raw)
+
+			distances_ec = spatial.distance.cdist(encoding.reshape(1,-1), prior_queries_ec.drop(columns=['pred_c', 'user_id']), metric='euclidean')
+			ed_enc_min = distances_ec.min(axis=1)[0]
+			ed_enc_median = np.median(distances_ec, axis=1)[0]
+			ed_enc_sum = np.sum(distances_ec)
+	ed_time = time.time() - stime_ed
 
 	# Reconstruction error (x vs ae(x)) to separate out anomalies/OOD queries
+	stime_mse = time.time()
 	mse = (x - out_decoder.detach().numpy())**2
 	q75_mse, q25_mse = np.percentile(mse, [75 ,25])
+	mse_time = time.time() - stime_mse
 
 	# Construct entropy of classes
+	stime_entropy = time.time()
 	value,counts = np.unique([pred], return_counts=True) if prior_queries_raw is None else np.unique(prior_queries_raw['pred_c'], return_counts=True)
 	output_entropy = entropy(counts)
+	entropy_time = time.time() - stime_entropy
 
 	# Save output
 	x['pred_c'] = pred
@@ -188,17 +199,19 @@ def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_sta
 	encoding_df['pred_c'] = pred
 	encoding_df['user_id'] = user_id
 	stats = {'user_id': user_id, 'class': pred, 'data': data_type, \
-			'ed_raw_min': ed_raw_min, 'ed_raw_median': ed_raw_median, \
-			'ed_enc_min': ed_enc_min, 'ed_enc_median': ed_enc_median, \
+			'ed_raw_min': ed_raw_min, 'ed_raw_median': ed_raw_median, 'ed_raw_sum': ed_raw_sum, \
+			'ed_enc_min': ed_enc_min, 'ed_enc_median': ed_enc_median, 'ed_enc_sum': ed_enc_sum, \
 			'mse_mean': np.mean(mse), 'mse_iqr': q75_mse-q25_mse, \
-			'output_entropy': output_entropy}
+			'output_entropy': output_entropy, \
+			'ed_time': ed_time, 'mse_time': mse_time, 'entropy_time': entropy_time}
 	
 	prior_queries_raw = pd.DataFrame(x).T if prior_queries_raw is None else prior_queries_raw.append(x, ignore_index=True)
 	prior_queries_enc = pd.DataFrame(encoding_df).T if prior_queries_enc is None else prior_queries_enc.append(encoding_df, ignore_index=True)
+
 	prior_stats = pd.DataFrame(stats, index=[0]) if prior_stats is None else prior_stats.append(stats, ignore_index=True)
 	prior_stats['mse_cumulative_median'] = prior_stats.groupby(['class', 'user_id'])['mse_mean'].apply(lambda x: x.shift().expanding().median())
-	#.expanding().median()
-	# prior_stats['detect'] = prior_stats.groupby('class')['ed_raw_min', 'mse_median'].sum()
+	prior_stats['mse_cumulative_sum'] = prior_stats.groupby(['class', 'user_id'])['mse_mean'].apply(lambda x: x.shift().expanding().sum())
+	prior_stats['ed_enc_cumulative_sum'] = prior_stats.groupby(['class', 'user_id'])['ed_enc_median'].apply(lambda x: x.shift().expanding().sum())
 
 	return prior_queries_raw, prior_queries_enc, prior_stats
 
@@ -280,16 +293,25 @@ def main():
 	test_loader = DataLoader(test_dataset, batch_size=128, shuffle=True)
 
 	# Train models
-	ae_model = train_ae(train_loader, X_train.shape, encoding_size=128, num_epochs=10, lr=1e-5)
+	if os.path.isfile('./models/{}/attack_defense/autoencoder.pt'.format(args.data_name)):
+		ae_model = torch.load('./models/{}/attack_defense/autoencoder.pt'.format(args.data_name))
+	else:
+		ae_model = train_ae(train_loader, X_train.shape, encoding_size=128, num_epochs=10, lr=1e-5)
+		torch.save(ae_model, './models/{}/attack_defense/autoencoder.pt'.format(args.data_name))
 	out_encoder_train, _ = ae_model(torch.from_numpy(X_train.values).float())
 	out_encoder_test, _ = ae_model(torch.from_numpy(X_test.values).float())
 
 	if args.model_type == 'rf':
 		model = train_rf(out_encoder_train.detach().numpy(), y_train, out_encoder_test.detach().numpy(), y_test)
+		with open('./models/UCI_HAR/attack_defense/rf.pkl', 'wb') as f:
+			pkl.dump(model, f)
 	elif args.model_type == 'lr':
 		model = train_lr(out_encoder_train.detach().numpy(), y_train, out_encoder_test.detach().numpy(), y_test)
+		with open('./models/UCI_HAR/attack_defense/lr.pkl', 'wb') as f:
+			pkl.dump(model, f)
 	elif args.model_type == 'dnn':
 		model = train_dnn(out_encoder_train, y_train, out_encoder_test, y_test)
+		torch.save(ae_model, './models/UCI_HAR/attack_defense/dnn.pt')
 
 	# Detect sample wise
 	random.seed(8)
@@ -316,83 +338,6 @@ def main():
 		for j,row in X_subset.iterrows():
 			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='train', user_id=i, model_type=args.model_type)
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_train_{}.csv'.format(args.model_type), index=False)
-
-	# test data 
-	prior_queries_raw, prior_queries_enc = None, None
-	prior_stats = None
-	for i in subject_test[0].unique():
-		user_indices = subject_test[subject_test[0]==i].index
-		X_subset = X_test.loc[user_indices]
-		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='test', user_id=i, model_type=args.model_type)
-	prior_stats.to_csv('./results/UCI_HAR/defense/detector_test_{}.csv'.format(args.model_type), index=False)
-
-	# random queries
-	prior_queries_raw, prior_queries_enc = None, None
-	prior_stats = None
-	for i in simulated_queries.index.unique():
-		X_subset = simulated_queries.loc[i]
-		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='rand', user_id=i, model_type=args.model_type)
-	prior_stats.to_csv('./results/UCI_HAR/defense/detector_rand_{}.csv'.format(args.model_type), index=False)
-
-	# noise queries
-	prior_queries_raw, prior_queries_enc = None, None
-	prior_stats = None
-	for i in noise_queries.index.unique():
-		X_subset = noise_queries.loc[i]
-		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='noise', user_id=i, model_type=args.model_type)
-	prior_stats.to_csv('./results/UCI_HAR/defense/detector_noise_{}.csv'.format(args.model_type), index=False)
-
-	# Use autoencoder on individuals and analyze statistics
-	# df_query_analysis = pd.DataFrame(columns=['user', 'data', 'class', 'num_samples', \
-	# 				    						'cs_median_raw', 'cs_var_raw', 'cs_iqr_raw', \
-	# 											'cs_median_enc', 'cs_var_enc', 'cs_iqr_enc', \
-	# 											'cs_median_dec', 'cs_var_dec', \
-	# 				    						'mse_median', 'mse_var', 'mse_iqr'])
-	# for i in subject_train[0].unique():
-	# 	user_indices = subject_train[subject_train[0]==i].index
-	# 	stats = analyze(rf_model, ae_model, X_train, user_indices)
-	# 	stats['user'] = int(i)
-	# 	stats['data'] = 'train'
-	# 	df_query_analysis = pd.concat([df_query_analysis,stats], ignore_index=True)
-		
-	# for i in subject_test[0].unique():
-	# 	user_indices = subject_test[subject_test[0]==i].index
-	# 	stats = analyze(rf_model, ae_model, X_test, user_indices)
-	# 	stats['user'] = int(i)
-	# 	stats['data'] = 'test'
-	# 	df_query_analysis = pd.concat([df_query_analysis,stats], ignore_index=True)
-
-	# # Test on simulated queries
-	# random.seed(8)
-	# rand_nums = random.sample(range(len(X_test)), 50)
-	# X_rand_users = X_test.iloc[rand_nums]
-	# y_rand_users = y_test.iloc[rand_nums]
-
-	# simulated_queries = pd.concat([X_rand_users]*100)
-	# simulated_queries[simulated_queries.columns] = np.random.uniform(-1,1,size=len(simulated_queries)*simulated_queries.shape[1]).reshape(len(simulated_queries),-1)
-	# simulated_queries = simulated_queries
-
-	# for i in simulated_queries.index.unique():
-	# 	stats = analyze(rf_model, ae_model, simulated_queries, i)
-	# 	stats['user'] = int(i)
-	# 	stats['data'] = 'rand'
-	# 	df_query_analysis = pd.concat([df_query_analysis,stats], ignore_index=True)
-
-	# noise_queries = pd.concat([X_rand_users]*100)
-	# rand_noise = np.random.uniform(-1,1,size=noise_queries.shape[0]*noise_queries.shape[1]).reshape(noise_queries.shape[0],-1)
-	# noise_queries = noise_queries + rand_noise
-
-	# for i in noise_queries.index.unique():
-	# 	stats = analyze(rf_model, ae_model, noise_queries, i)
-	# 	stats['user'] = int(i)
-	# 	stats['data'] = 'noise'
-	# 	df_query_analysis = pd.concat([df_query_analysis,stats], ignore_index=True)
-
-	# print(df_query_analysis)
-	# df_query_analysis.to_csv('./results/UCI_HAR/defense/query_metrics.csv', index=False)
 
 if __name__ == '__main__':
 	main()
