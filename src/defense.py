@@ -129,8 +129,8 @@ def train_dnn(X_train, y_train, X_test, y_test, input_size=128, num_classes=6):
 			optimizer.step()
 		losses.append(loss)
 
-	plt.plot(losses)
-	plt.show()
+	# plt.plot(losses)
+	# plt.show()
 
 	accuracy = dnn_predict(model, X_train.detach(), torch.from_numpy(y_train.values).long())
 	print(f'DNN train accuracy: {accuracy:.2f}')
@@ -338,6 +338,34 @@ def main():
 		for j,row in X_subset.iterrows():
 			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='train', user_id=i, model_type=args.model_type)
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_train_{}.csv'.format(args.model_type), index=False)
+
+	# test data 
+	prior_queries_raw, prior_queries_enc = None, None
+	prior_stats = None
+	for i in subject_test[0].unique():
+		user_indices = subject_test[subject_test[0]==i].index
+		X_subset = X_test.loc[user_indices]
+		for j,row in X_subset.iterrows():
+			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='test', user_id=i, model_type=args.model_type)
+	prior_stats.to_csv('./results/UCI_HAR/defense/detector_test_{}.csv'.format(args.model_type), index=False)
+
+	# random queries
+	prior_queries_raw, prior_queries_enc = None, None
+	prior_stats = None
+	for i in simulated_queries.index.unique():
+		X_subset = simulated_queries.loc[i]
+		for j,row in X_subset.iterrows():
+			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='rand', user_id=i, model_type=args.model_type)
+	prior_stats.to_csv('./results/UCI_HAR/defense/detector_rand_{}.csv'.format(args.model_type), index=False)
+
+	# noise queries
+	prior_queries_raw, prior_queries_enc = None, None
+	prior_stats = None
+	for i in noise_queries.index.unique():
+		X_subset = noise_queries.loc[i]
+		for j,row in X_subset.iterrows():
+			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='noise', user_id=i, model_type=args.model_type)
+	prior_stats.to_csv('./results/UCI_HAR/defense/detector_noise_{}.csv'.format(args.model_type), index=False)
 
 if __name__ == '__main__':
 	main()
