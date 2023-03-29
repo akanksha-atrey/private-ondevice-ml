@@ -105,6 +105,7 @@ def attack_db_query_distance(model, X_seed_for_classes, noise_range=(-1,1), mode
 def attack_db_query_distribution(model, X_seed_for_classes, pca, noise_range=(-1,1), model_type='rf', num_queries=500, ensemble=1):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'num_same_class', \
 							'type', 'pca_c1', 'pca_c2', 'max_prob'])
+	np.random.seed(7)
 
 	for X_seed in X_seed_for_classes:
 		#get seed class
@@ -170,7 +171,8 @@ def attack_db_query_distribution(model, X_seed_for_classes, pca, noise_range=(-1
 
 def attack_db_query(model, X_seed_for_classes, noise_range=(-1,1), model_type='rf', ensemble=1):
 	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'same_class_mean', 'same_class_std'])
-
+	np.random.seed(7)
+	
 	for query_size in [10,20,50,100,250,500,750,1000,2000,5000]:
 		for X_seed in X_seed_for_classes:
 			#get seed class

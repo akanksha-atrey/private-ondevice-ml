@@ -258,10 +258,6 @@ def main():
 		else:
 			attack_results.to_csv('./results/{}/attack/attack{}_rand_query.csv'.format(args.data_name, ensemble), index=False)
 
-	# updated_X, classes_count = attack_fgsm(X_rand_users, y_rand_users, model, model_type='dnn')
-	# print(classes_count)
-	attack_model_inversion(model, X_rand_users, y_rand_users)
-
 	#black-box
 	if args.bb_query_attack:
 		attack_results = attack_bb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type, ensemble=args.ensemble)
