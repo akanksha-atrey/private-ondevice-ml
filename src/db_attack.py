@@ -6,6 +6,7 @@ from src.models_har import Net
 from src.ensemble_models_har import predict_weighted
 
 import os
+import time
 import argparse
 import numpy as np
 import pandas as pd
@@ -175,6 +176,8 @@ def attack_db_query(model, X_seed_for_classes, noise_range=(-1,1), model_type='r
 	
 	for query_size in [10,20,50,100,250,500,750,1000,2000,5000]:
 		for X_seed in X_seed_for_classes:
+			start_time = time.time()
+
 			#get seed class
 			X_augment = pd.concat([X_seed]*query_size)
 			if ensemble > 1:
@@ -201,8 +204,9 @@ def attack_db_query(model, X_seed_for_classes, noise_range=(-1,1), model_type='r
 				else:
 					c = model.predict(X_augment)
 			df_pred['noise_class'] = c
+			total_time = time.time() - start_time
 
-			#assess cosine similarity in queries
+			#assess number of exploitations (max = query_size)
 			num_same_classes = []
 			adv_groups = df_pred.groupby(X_augment.index)
 			for key,grp in adv_groups:
@@ -212,7 +216,128 @@ def attack_db_query(model, X_seed_for_classes, noise_range=(-1,1), model_type='r
 								'num_query': query_size, \
 								'seed_class': seed_c[0], \
 								'same_class_mean': np.mean(num_same_classes), \
-								'same_class_std': np.std(num_same_classes)}, ignore_index=True)
+								'same_class_std': np.std(num_same_classes), \
+								'runtime': total_time}, ignore_index=True)
+			
+	return df_out
+
+'''
+Attack to assess how non model input features affect attack performance (run time).
+'''
+def attack_db_query_bb(model, X_seed_for_classes, noise_range=(-1,1), model_type='rf', ensemble=1):
+	df_out = pd.DataFrame(columns=['model_type', 'num_query', 'seed_class', 'same_class_mean', 'same_class_std'])
+	X_cols = list(X_seed_for_classes[0].columns)
+	np.random.seed(7)
+
+	for num_extra_feat in [10,1000,5000]:
+		for query_size in [10,20,50,100,250,500,750,1000,2000,5000]:
+			for X_seed in X_seed_for_classes:
+				start_time = time.time()
+
+				#get seed class
+				X_augment = pd.concat([X_seed]*query_size)
+				if ensemble > 1:
+					seed_c, _, _ = predict_weighted(model, X_augment, [0]*len(X_augment), num_models=ensemble, model_type=model_type)
+				else:
+					if model_type == 'dnn':
+						_, seed_c = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+						seed_c = seed_c.numpy()
+					else:
+						seed_c = model.predict(X_augment)
+				df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'seed_class': seed_c})
+
+				#augment extra columns and perturb dataset
+				X_cols_augment = X_cols + list(range(X_cols[-1]+1, X_cols[-1]+num_extra_feat+1))
+				X_augment = X_seed.reindex(columns=X_cols_augment, fill_value=0)
+				X_augment = pd.concat([X_augment]*query_size)
+
+				rand_noise = np.random.uniform(noise_range[0],noise_range[1],size=X_augment.shape[0]*X_augment.shape[1]).reshape(X_augment.shape[0],-1)
+				X_augment = X_augment + rand_noise
+				X_augment = X_augment.clip(-1,1)
+
+				#predict using model and assess class
+				if ensemble > 1:
+					c, _, _ = predict_weighted(model, X_augment[X_cols], [0]*len(X_augment[X_cols]), num_models=ensemble, model_type=model_type)
+				else:
+					if model_type == 'dnn':
+						_, c = torch.max(model(torch.from_numpy(X_augment[X_cols].values).float()).data, 1)
+					else:
+						c = model.predict(X_augment[X_cols])
+				df_pred['noise_class'] = c
+				total_time = time.time() - start_time
+
+				#assess number of exploitations (max = query_size)
+				num_same_classes = []
+				adv_groups = df_pred.groupby(X_augment.index)
+				for key,grp in adv_groups:
+					num_same_classes.append((grp['noise_class'] == grp['seed_class']).sum())
+
+				df_out = df_out.append({'model_type': model_type, \
+									'num_query': query_size, \
+									'num_extra_features': num_extra_feat, \
+									'seed_class': seed_c[0], \
+									'same_class_mean': np.mean(num_same_classes), \
+									'same_class_std': np.std(num_same_classes), \
+									'runtime': total_time}, ignore_index=True)
+
+	return df_out
+
+'''
+Randomly query different number of features for a given data set size.
+'''
+def attack_db_rand_feature_size(model, X_seed_for_classes, noise_range=(-1,1), model_type='rf', query_size=100, num_samples=10, ensemble=1):
+	df_out = pd.DataFrame(columns=['model_type', 'num_features', 'seed_class', 'same_class_mean', 'same_class_std'])
+
+	for X_seed in X_seed_for_classes:
+		start_time = time.time()
+
+		#get seed class
+		X_augment = pd.concat([X_seed]*query_size)
+		if ensemble > 1:
+			seed_c, _, _ = predict_weighted(model, X_augment, [0]*len(X_augment), num_models=ensemble, model_type=model_type)
+		else:
+			if model_type == 'dnn':
+				_, seed_c = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+				seed_c = seed_c.numpy()
+			else:
+				seed_c = model.predict(X_augment)
+		df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'seed_class': seed_c})
+
+		#run attack with different features queried for
+		for num_features in [5,10,50,100,200,300,400,500]:
+			results_across_samples = []
+
+			#get random features
+			for i in range(num_samples):
+				#randomly select columns
+				random_cols = random.sample(list(X_seed.columns), num_features)
+
+				#augment and add noise
+				rand_noise = np.random.uniform(noise_range[0],noise_range[1],size=X_augment.shape[0]*num_features).reshape(X_augment.shape[0],-1)
+				X_augment[random_cols] = X_augment[random_cols] + rand_noise
+				X_augment[random_cols] = X_augment[random_cols].clip(-1,1)
+
+				#predict using model and assess class
+				if ensemble > 1:
+					c, _, _ = predict_weighted(model, X_augment, [0]*len(X_augment), num_models=ensemble, model_type=model_type)
+				else:
+					if model_type == 'dnn':
+						_, c = torch.max(model(torch.from_numpy(X_augment.values).float()).data, 1)
+					else:
+						c = model.predict(X_augment)
+				df_pred['noise_class'] = c
+
+				#assess number of exploitations (max = query_size)
+				num_same_classes = []
+				adv_groups = df_pred.groupby(X_augment.index)
+				for key,grp in adv_groups:
+					num_same_classes.append((grp['noise_class'] == grp['seed_class']).sum())
+				results_across_samples.append(np.mean(num_same_classes))
+
+			df_out = df_out.append({'model_type': model_type, \
+								'num_features': num_features, \
+								'seed_class': seed_c[0], \
+								'same_class_mean': np.mean(results_across_samples)}, ignore_index=True)
 			
 	return df_out
 
@@ -224,6 +349,8 @@ def main():
 	parser.add_argument('-noise_bounds', type=float, default='-1 1', nargs='+', help='noise will be drawn from uniform distribution between bounds')
 	parser.add_argument('-ensemble', default=1, type=int, help='1 if using single model, else number of models in ensemble')
 	parser.add_argument('-exp_num_query', type=bool)
+	parser.add_argument('-exp_num_query_bb', type=bool)
+	parser.add_argument('-exp_num_query_randfeat', type=bool)
 	parser.add_argument('-exp_query_distance', type=bool)
 	parser.add_argument('-exp_query_distribution', type=bool)
 	args = parser.parse_args()
@@ -281,15 +408,35 @@ def main():
 		else:
 			attack_results.to_csv('./results/{}/attack/attack{}_db_query.csv'.format(args.data_name, ensemble), index=False)
 
+	if args.exp_num_query_bb:	
+		attack_results = attack_db_query_bb(model, seed_for_classes, noise_range=tuple(args.noise_bounds), model_type=args.model_type, ensemble=args.ensemble)
+		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
+		if os.path.isfile('./results/{}/attack/attack{}_db_query_bb_{}.csv'.format(args.data_name, ensemble, args.model_type)):
+			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_bb_{}.csv'.format(args.data_name, ensemble, args.model_type))
+			df_results = df_results.append(attack_results, ignore_index=True)
+			df_results.to_csv('./results/{}/attack/attack{}_db_query_bb_{}.csv'.format(args.data_name, ensemble, args.model_type), index=False)
+		else:
+			attack_results.to_csv('./results/{}/attack/attack{}_db_query_bb_{}.csv'.format(args.data_name, ensemble, args.model_type), index=False)
+
+	if args.exp_num_query_randfeat:	
+		attack_results = attack_db_rand_feature_size(model, seed_for_classes, noise_range=tuple(args.noise_bounds), model_type=args.model_type, ensemble=args.ensemble)
+		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
+		if os.path.isfile('./results/{}/attack/attack{}_db_query_randfeat.csv'.format(args.data_name, ensemble)):
+			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_randfeat.csv'.format(args.data_name, ensemble))
+			df_results = df_results.append(attack_results, ignore_index=True)
+			df_results.to_csv('./results/{}/attack/attack{}_db_query_randfeat.csv'.format(args.data_name, ensemble), index=False)
+		else:
+			attack_results.to_csv('./results/{}/attack/attack{}_db_query_randfeat.csv'.format(args.data_name, ensemble), index=False)
+
 	if args.exp_query_distance:
 		attack_results = attack_db_query_distance(model, seed_for_classes, noise_range=tuple(args.noise_bounds), model_type=args.model_type, num_queries=100, ensemble=args.ensemble)
 		attack_results['noise_bounds'] = [tuple(args.noise_bounds)] * len(attack_results)
-		if os.path.isfile('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble)):
-			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble))
+		if os.path.isfile('./results/{}/attack/attack{}_db_query_dist_{}.csv'.format(args.data_name, ensemble, args.model_type)):
+			df_results = pd.read_csv('./results/{}/attack/attack{}_db_query_dist_{}.csv'.format(args.data_name, ensemble, args.model_type))
 			df_results = df_results.append(attack_results, ignore_index=True)
-			df_results.to_csv('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble), index=False)
+			df_results.to_csv('./results/{}/attack/attack{}_db_query_dist_{}.csv'.format(args.data_name, ensemble, args.model_type), index=False)
 		else:
-			attack_results.to_csv('./results/{}/attack/attack{}_db_query_dist.csv'.format(args.data_name, ensemble), index=False)
+			attack_results.to_csv('./results/{}/attack/attack{}_db_query_dist_{}.csv'.format(args.data_name, ensemble, args.model_type), index=False)
 
 	if args.exp_query_distribution:
 		pca = PCA(n_components=2)
