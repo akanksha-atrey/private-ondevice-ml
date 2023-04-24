@@ -151,7 +151,7 @@ def dnn_predict(model, X, y, debug=False):
 
 	return accuracy
 
-def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_stats, data_type='train', user_id=-1, model_type='rf'):
+def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs, data_type='train', user_id=-1, model_type='rf'):
 	out_encoder, out_decoder = ae_model(torch.from_numpy(x.values).float())
 	encoding = out_encoder.detach().numpy()
 
@@ -188,8 +188,10 @@ def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_sta
 
 	# Construct entropy of classes
 	stime_entropy = time.time()
-	value,counts = np.unique([pred], return_counts=True) if prior_queries_raw is None else np.unique(prior_queries_raw['pred_c'], return_counts=True)
-	output_entropy = entropy(counts)
+	prior_outputs = dict.fromkeys(range(6),0) if prior_outputs is None else prior_outputs
+	prior_outputs[pred] += 1
+	output_probability = [v/sum(prior_outputs.values()) for k,v in prior_outputs.items()]
+	output_entropy = entropy(output_probability)
 	entropy_time = time.time() - stime_entropy
 
 	# Save output
@@ -213,7 +215,7 @@ def detector(model, ae_model, x, prior_queries_raw, prior_queries_enc, prior_sta
 	prior_stats['mse_cumulative_sum'] = prior_stats.groupby(['class', 'user_id'])['mse_mean'].apply(lambda x: x.shift().expanding().sum())
 	prior_stats['ed_enc_cumulative_sum'] = prior_stats.groupby(['class', 'user_id'])['ed_enc_median'].apply(lambda x: x.shift().expanding().sum())
 
-	return prior_queries_raw, prior_queries_enc, prior_stats
+	return prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs
 
 def analyze(model, ae_model, X, indices, model_type='rf'):
 	X_subset = X.loc[indices]
@@ -330,41 +332,45 @@ def main():
 	noise_queries = noise_queries.clip(-1,1)
 
 	# train data
-	prior_queries_raw, prior_queries_enc = None, None
 	prior_stats = None
 	for i in subject_train[0].unique():
+		prior_queries_raw, prior_queries_enc, prior_outputs = None, None, None
 		user_indices = subject_train[subject_train[0]==i].index
 		X_subset = X_train.loc[user_indices]
 		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='train', user_id=i, model_type=args.model_type)
+			prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs, data_type='train', user_id=i, model_type=args.model_type)
+
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_train_{}.csv'.format(args.model_type), index=False)
 
 	# test data 
-	prior_queries_raw, prior_queries_enc = None, None
 	prior_stats = None
 	for i in subject_test[0].unique():
+		prior_queries_raw, prior_queries_enc, prior_outputs = None, None, None
 		user_indices = subject_test[subject_test[0]==i].index
 		X_subset = X_test.loc[user_indices]
 		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='test', user_id=i, model_type=args.model_type)
+			prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs, data_type='test', user_id=i, model_type=args.model_type)
+
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_test_{}.csv'.format(args.model_type), index=False)
 
 	# random queries
-	prior_queries_raw, prior_queries_enc = None, None
 	prior_stats = None
 	for i in simulated_queries.index.unique():
+		prior_queries_raw, prior_queries_enc, prior_outputs = None, None, None
 		X_subset = simulated_queries.loc[i]
 		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='rand', user_id=i, model_type=args.model_type)
+			prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs, data_type='rand', user_id=i, model_type=args.model_type)
+
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_rand_{}.csv'.format(args.model_type), index=False)
 
 	# noise queries
-	prior_queries_raw, prior_queries_enc = None, None
 	prior_stats = None
 	for i in noise_queries.index.unique():
+		prior_queries_raw, prior_queries_enc, prior_outputs = None, None, None
 		X_subset = noise_queries.loc[i]
 		for j,row in X_subset.iterrows():
-			prior_queries_raw, prior_queries_enc, prior_stats = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, data_type='noise', user_id=i, model_type=args.model_type)
+			prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs = detector(model, ae_model, row, prior_queries_raw, prior_queries_enc, prior_stats, prior_outputs, data_type='noise', user_id=i, model_type=args.model_type)
+
 	prior_stats.to_csv('./results/UCI_HAR/defense/detector_noise_{}.csv'.format(args.model_type), index=False)
 
 if __name__ == '__main__':
