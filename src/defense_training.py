@@ -345,7 +345,7 @@ def main():
 			pkl.dump(model, f)
 	elif args.model_type == 'dnn':
 		model = train_dnn(out_encoder_train.detach(), y_train, out_encoder_test.detach(), y_test, num_classes=y_train.nunique())
-		torch.save(ae_model, './models/UCI_HAR/attack_defense/dnn.pt')
+		torch.save(model, './models/UCI_HAR/attack_defense/dnn.pt')
 
 if __name__ == '__main__':
 	main()
