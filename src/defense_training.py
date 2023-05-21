@@ -302,10 +302,10 @@ def main():
 	DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 	# Load dataset
-	X_train = pd.read_csv('./data/UCI_HAR/train/X_train.txt', delim_whitespace=True, header=None)
-	y_train = pd.read_csv('./data/UCI_HAR/train/y_train.txt', delim_whitespace=True, header=None).squeeze()
-	X_test = pd.read_csv('./data/UCI_HAR/test/X_test.txt', delim_whitespace=True, header=None)
-	y_test = pd.read_csv('./data/UCI_HAR/test/y_test.txt', delim_whitespace=True, header=None).squeeze()
+	X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
+	y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+	X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
+	y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
 
 	y_train = y_train-1
 	y_test = y_test-1
@@ -314,8 +314,8 @@ def main():
 	print("Test dataset shapes: {}, {}".format(X_test.shape, y_test.shape))
 
 	# Load subject information for train and test sets
-	subject_train = pd.read_csv('./data/UCI_HAR/train/subject_train.txt', delim_whitespace=True, header=None)
-	subject_test = pd.read_csv('./data/UCI_HAR/test/subject_test.txt', delim_whitespace=True, header=None)
+	subject_train = pd.read_csv('./data/{}/train/subject_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
+	subject_test = pd.read_csv('./data/{}/test/subject_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
 
 	print("Number of users in train set: ", subject_train.nunique()[0])
 	print("Number of users in test set: ", subject_test.nunique()[0])
@@ -337,15 +337,15 @@ def main():
 
 	if args.model_type == 'rf':
 		model = train_rf(out_encoder_train.detach().numpy(), y_train, out_encoder_test.detach().numpy(), y_test)
-		with open('./models/UCI_HAR/attack_defense/rf.pkl', 'wb') as f:
+		with open('./models/{}/attack_defense/rf.pkl'.format(args.data_name), 'wb') as f:
 			pkl.dump(model, f)
 	elif args.model_type == 'lr':
 		model = train_lr(out_encoder_train.detach().numpy(), y_train, out_encoder_test.detach().numpy(), y_test)
-		with open('./models/UCI_HAR/attack_defense/lr.pkl', 'wb') as f:
+		with open('./models/{}/attack_defense/lr.pkl'.format(args.data_name), 'wb') as f:
 			pkl.dump(model, f)
 	elif args.model_type == 'dnn':
 		model = train_dnn(out_encoder_train.detach(), y_train, out_encoder_test.detach(), y_test, num_classes=y_train.nunique())
-		torch.save(model, './models/UCI_HAR/attack_defense/dnn.pt')
+		torch.save(model, './models/{}/attack_defense/dnn.pt'.format(args.data_name))
 
 if __name__ == '__main__':
 	main()
