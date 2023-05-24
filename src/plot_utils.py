@@ -413,9 +413,13 @@ def plot_defense(df, data_name, alpha=0.33, beta=0.33, gamma=0.33, detector_thre
     plt.clf()
 
     # plot queries by runtime
-    df['ed_time'] *= 1000
-    df['mse_time'] *= 1000
-    df['entropy_time'] *= 1000
+    min_time = df[['ed_time', 'mse_time', 'entropy_time']].min().min()
+    max_time = df[['ed_time', 'mse_time', 'entropy_time']].max().max()
+    print(min_time, max_time)
+    print(df['ed_time'].subtract(min_time))
+    df['ed_time'] = df['ed_time'].subtract(min_time).divide(max_time - min_time)
+    df['mse_time'] = df['mse_time'].subtract(min_time).divide(max_time - min_time)
+    df['entropy_time'] = df['entropy_time'].subtract(min_time).divide(max_time - min_time)
     fig, ax = plt.subplots()
     sns.lineplot(data=df, x='num_query', y='ed_time', label='Distance', hue='model_type', hue_order = ['rf', 'lr', 'dnn'], linestyle = '-')
     sns.lineplot(data=df, x='num_query', y='mse_time', label='MSE', hue='model_type', hue_order = ['rf', 'lr', 'dnn'], linestyle = '--')
@@ -426,7 +430,7 @@ def plot_defense(df, data_name, alpha=0.33, beta=0.33, gamma=0.33, detector_thre
                     Line2D([0], [0], color='black', linestyle='-.', label='Entropy')]
     ax.legend(handles=custom_lines, labels=['Query Distance', 'Reconstruction Error', 'Output Entropy'])
     plt.xlabel('Number of Queries')
-    plt.ylabel('Runtime (ms)')
+    plt.ylabel('Normalized Runtime')
     # plt.yscale('log')
     plt.savefig('./results/{}/defense/detector_runtime.pdf'.format(data_name), bbox_inches='tight')
     plt.clf()
