@@ -3,7 +3,7 @@ Author: Akanksha Atrey
 Description: This file contains plotting utility functions for different experiments.
 '''
 
-from src.models_har import Net
+from src.attack.models_har import Net
 
 import os
 import glob

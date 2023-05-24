@@ -3,8 +3,8 @@ Author: Akanksha Atrey
 Description: This file contains implementation of attacks on trained ML models to leak class information.
 '''
 
-from src.models_har import Net
-from src.ensemble_models_har import predict_weighted
+from src.attack.models_har import Net
+from src.failed_solutions.ensemble_models_har import predict_weighted
 
 import os
 import argparse

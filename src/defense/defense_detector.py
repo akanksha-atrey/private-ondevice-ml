@@ -3,7 +3,7 @@ Author: Akanksha Atrey
 Description: This file contains implementation of an autoencoder based defense mechanism.
 '''
 
-from src.defense_training import Autoencoder, Net
+from src.defense.defense_training import Autoencoder, Net
 import os
 import argparse
 import numpy as np
