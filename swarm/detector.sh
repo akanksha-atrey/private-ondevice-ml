@@ -20,7 +20,7 @@ modeltype=$1
 noisebounds=$2
 numqueries=$3
 
-python3 -m src.defense_detector -model_type $modeltype -noise_bounds $noisebounds -num_queries $numqueries
+python3 -m src.defense.defense_detector -model_type $modeltype -noise_bounds $noisebounds -num_queries $numqueries
 
 wait
 

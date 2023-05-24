@@ -19,7 +19,7 @@ echo "Starting to train autoencoder based model..."
 
 modeltype=$1
 
-python3 -m src.defense_training -model_type $modeltype
+python3 -m src.defense.defense_training -model_type $modeltype
 
 echo "Done training the models!"
 

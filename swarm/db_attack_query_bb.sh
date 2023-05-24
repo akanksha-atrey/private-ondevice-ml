@@ -19,7 +19,7 @@ echo "Running decision boundary attack..."
 modeltype=$1
 noisebounds=$2
 
-python3 -m src.db_attack -model_type $modeltype -noise_bounds $noisebounds -exp_num_query_bb true 
+python3 -m src.attack.db_attack -model_type $modeltype -noise_bounds $noisebounds -exp_num_query_bb true 
 
 wait
 
