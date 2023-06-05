@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 '''
 Randomly query all model input features for differing query sample sizes.
 '''
-def attack_wb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
+def attack_wb_rand_query_size(model, X, y, model_type='rf', num_classes=6, feat_min=-1, feat_max=1, ensemble=1):
 	attack_results_random = pd.DataFrame(columns=['model_type', 'query_size', 'accuracy', 'runtime'])
 
 	#run baseline attack
@@ -37,7 +37,7 @@ def attack_wb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 		else:
 			results_baseline = model.predict(X)
 	df_pred = pd.DataFrame.from_dict({'index': X.index, 'pred': results_baseline})
-	attack_acc = df_pred['pred'].groupby(X.index).nunique().mean()/6*100
+	attack_acc = df_pred['pred'].groupby(X.index).nunique().mean()/num_classes*100
 	end_time = time.time() - start_time
 	row = {'model_type': model_type, 'query_size': 1, 'accuracy': attack_acc, 'runtime': end_time}
 	attack_results_random = attack_results_random.append(row, ignore_index=True)
@@ -48,7 +48,7 @@ def attack_wb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 		start_time = time.time()
 
 		X_augment = pd.concat([X]*query_size)
-		X_augment[X_augment.columns] = np.random.uniform(-1,1,size=len(X_augment)*X_augment.shape[1]).reshape(len(X_augment),-1)
+		X_augment[X_augment.columns] = np.random.uniform(feat_min,feat_max,size=len(X_augment)*X_augment.shape[1]).reshape(len(X_augment),-1)
 		
 		if ensemble > 1:
 			result_attack, _, _ = predict_weighted(model, X_augment, pd.concat([y]*query_size), num_models=ensemble, model_type=model_type)
@@ -58,7 +58,7 @@ def attack_wb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 			else:
 				result_attack = model.predict(X_augment)
 		df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
-		attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/6*100
+		attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/num_classes*100
 		attack_results_random = attack_results_random.append({'model_type': model_type, \
 															'query_size': query_size, \
 															'accuracy': attack_acc, \
@@ -73,7 +73,7 @@ def attack_wb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 '''
 Attack to assess how non model input features affect attack performance (run time).
 '''
-def attack_bb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
+def attack_bb_rand_query_size(model, X, y, model_type='rf', num_classes=6, feat_min=-1, feat_max=1, ensemble=1, data_name='UCI_HAR'):
 	df_out = pd.DataFrame(columns=['model_type', 'num_extra_features', 'query_size', 'accuracy', 'runtime'])
 	X_cols = list(X.columns)
 
@@ -87,7 +87,7 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 			#perturb subset
 			X_augment = X.reindex(columns=X_cols_augment, fill_value=0)
 			X_augment = pd.concat([X_augment]*query_size)
-			X_augment[X_augment.columns] = np.random.default_rng().uniform(-1,1,size=(len(X_augment), X_augment.shape[1]))
+			X_augment[X_augment.columns] = np.random.default_rng().uniform(feat_min,feat_max,size=(len(X_augment), X_augment.shape[1]))
 			
 			#get results
 			if ensemble > 1:
@@ -98,7 +98,7 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 				else:
 					result_attack = model.predict(X_augment[X_cols])
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
-			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/6*100
+			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/num_classes*100
 
 			end_time = time.time() - start_time
 			print("Total time to run random data attack for {} samples: {}".format(query_size, end_time))
@@ -110,14 +110,14 @@ def attack_bb_rand_query_size(model, X, y, model_type='rf', ensemble=1):
 									'runtime': end_time}, ignore_index=True)
 
 		estr = '_ensemble'+str(ensemble) if ensemble > 1 else ''
-		df_out.to_csv('./results/{}/attack/attack{}_bb_rand_query_{}.csv'.format('UCI_HAR', estr, model_type), index=False)
+		df_out.to_csv('./results/{}/attack/attack{}_bb_rand_query_{}.csv'.format(data_name, estr, model_type), index=False)
 	
 	return df_out
 
 '''
 Randomly query different number of features for a given data set size.
 '''
-def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, num_samples=10, ensemble=1):
+def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, num_samples=10, num_classes=6, feat_min=-1, feat_max=1, ensemble=1):
 	attack_results_random = pd.DataFrame(columns=['model_type', 'num_features', 'accuracy_mean', 'accuracy_std', 'runtime'])
 
 	#run baseline attack
@@ -130,7 +130,7 @@ def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, n
 		else:
 			results_baseline = model.predict(X)
 	df_pred = pd.DataFrame.from_dict({'index': X.index, 'pred': results_baseline})
-	attack_acc = df_pred['pred'].groupby(X.index).nunique().mean()/6*100
+	attack_acc = df_pred['pred'].groupby(X.index).nunique().mean()/num_classes*100
 	end_time = time.time() - start_time
 	row = {'model_type': model_type, 'num_features': 0, 'accuracy_mean': attack_acc, 'accuracy_std': 0, 'runtime': end_time}
 	attack_results_random = attack_results_random.append(row, ignore_index=True)
@@ -145,7 +145,7 @@ def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, n
 			random_cols = random.sample(list(X.columns), num_features)
 
 			X_augment = pd.concat([X]*query_size)
-			X_augment[random_cols] = np.random.uniform(-1,1,size=len(X_augment)*num_features).reshape(len(X_augment),-1)
+			X_augment[random_cols] = np.random.uniform(feat_min,feat_max,size=len(X_augment)*num_features).reshape(len(X_augment),-1)
 			
 			if ensemble > 1:
 				result_attack, _, _ = predict_weighted(model, X_augment, pd.concat([y]*query_size), num_models=ensemble, model_type=model_type)
@@ -156,7 +156,7 @@ def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, n
 					result_attack = model.predict(X_augment)
 
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
-			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/6*100
+			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/num_classes*100
 			results_across_samples.append(attack_acc)
 		
 		end_time = time.time() - start_time
@@ -172,7 +172,7 @@ def attack_wb_rand_feature_size(model, X, y, model_type='rf', query_size=1000, n
 '''
 Attack to assess how non model input features affect attack performance (run time). TODO
 '''
-def attack_bb_query_extra(model, X, y, model_type='rf', ensemble=1):
+def attack_bb_query_extra(model, X, y, model_type='rf', num_classes=6, feat_min=-1, feat_max=1, ensemble=1, data_name='UCI_HAR'):
 	df_out = pd.DataFrame(columns=['model_type', 'num_extra_features', 'query_size', 'accuracy', 'runtime'])
 	X_cols = list(X.columns)
 
@@ -186,7 +186,7 @@ def attack_bb_query_extra(model, X, y, model_type='rf', ensemble=1):
 			#perturb subset
 			X_augment = X.reindex(columns=X_cols_augment, fill_value=0)
 			X_augment = pd.concat([X_augment]*query_size)
-			X_augment[X_augment.columns] = np.random.default_rng().uniform(-1,1,size=(len(X_augment), X_augment.shape[1]))
+			X_augment[X_augment.columns] = np.random.default_rng().uniform(feat_min,feat_max,size=(len(X_augment), X_augment.shape[1]))
 			
 			#get output using black box inference
 			if ensemble > 1:
@@ -197,7 +197,7 @@ def attack_bb_query_extra(model, X, y, model_type='rf', ensemble=1):
 				else:
 					result_attack = model.predict(X_augment[X_cols])
 			df_pred = pd.DataFrame.from_dict({'index': X_augment.index, 'pred': result_attack})
-			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/6*100
+			attack_acc = df_pred['pred'].groupby(X_augment.index).nunique().mean()/num_classes*100
 
 			runtime = time.time() - start_time
 			df_out = df_out.append({'model_type': model_type, \
@@ -207,7 +207,7 @@ def attack_bb_query_extra(model, X, y, model_type='rf', ensemble=1):
 									'runtime': runtime}, ignore_index=True)
 
 			estr = '_ensemble'+str(ensemble) if ensemble > 1 else ''
-			df_out.to_csv('./results/{}/attack/attack{}_bb_unused_feat_{}.csv'.format('UCI_HAR', estr, model_type), index=False)
+			df_out.to_csv('./results/{}/attack/attack{}_bb_unused_feat_{}.csv'.format(data_name, estr, model_type), index=False)
 
 	return df_out
 
@@ -223,23 +223,32 @@ def main():
 	parser.add_argument('-bb_unused_feat_attack', type=bool)
 	args = parser.parse_args()
 
-	X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
-	y_test = y_test-1
+	if args.data_name == 'UCI_HAR':
+		X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
+		y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+		y_test = y_test-1
+	elif args.data_name == 'MNIST':
+		X_train = pd.read_csv('./data/MNIST/X_train.csv', header=None)
+		y_train = pd.read_csv('./data/MNIST/y_train.csv', header=None).squeeze()
+		X_test = pd.read_csv('./data/MNIST/X_test.csv', header=None)
+		y_test = pd.read_csv('./data/MNIST/y_test.csv', header=None).squeeze()
+	feat_min = -1
+	feat_max = 1
+	num_classes = y_train.nunique()
 
 	#load model
 	ensemble = '_ensemble'+str(args.ensemble) if args.ensemble > 1 else ''
 	if args.model_type == 'rf':
-		with open('./models/{}/activity_recognition/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'lr':
-		with open('./models/{}/activity_recognition/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dt':
-		with open('./models/{}/activity_recognition/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dnn':
-		model = torch.load('./models/{}/activity_recognition/dnn{}.pt'.format(args.data_name, ensemble))
+		model = torch.load('./models/{}/attack/dnn{}.pt'.format(args.data_name, ensemble))
 
 	#pick 100 random adversarial users
 	random.seed(10)
@@ -250,7 +259,8 @@ def main():
 	## QUERY ATTACK
 	#white-box
 	if args.wb_query_attack:
-		attack_results = attack_wb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type, ensemble=args.ensemble)
+		attack_results = attack_wb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type, \
+					     					num_classes=num_classes, feat_min=feat_min, feat_max=feat_max, ensemble=args.ensemble)
 		if os.path.isfile('./results/{}/attack/attack{}_rand_query.csv'.format(args.data_name, ensemble)):
 			df_results = pd.read_csv('./results/{}/attack/attack{}_rand_query.csv'.format(args.data_name, ensemble))
 			df_results = df_results.append(attack_results, ignore_index=True)
@@ -260,11 +270,14 @@ def main():
 
 	#black-box
 	if args.bb_query_attack:
-		attack_results = attack_bb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type, ensemble=args.ensemble)
+		attack_results = attack_bb_rand_query_size(model, X_rand_users, y_rand_users, model_type=args.model_type, \
+					     						feat_min=feat_min, feat_max=feat_max, ensemble=args.ensemble, \
+												num_classes=num_classes, data_name=args.data_name)
 
 	## NUMBER OF FEATURES ATTACK (wb)
 	if args.wb_num_feat_attack:
-		attack_results = attack_wb_rand_feature_size(model, X_rand_users, y_rand_users, model_type=args.model_type, ensemble=args.ensemble)
+		attack_results = attack_wb_rand_feature_size(model, X_rand_users, y_rand_users, model_type=args.model_type, \
+					       						num_classes=num_classes, feat_min=feat_min, feat_max=feat_max, ensemble=args.ensemble)
 		if os.path.isfile('./results/{}/attack/attack{}_rand_feat.csv'.format(args.data_name, ensemble)):
 			df_results = pd.read_csv('./results/{}/attack/attack{}_rand_feat.csv'.format(args.data_name, ensemble))
 			df_results = df_results.append(attack_results, ignore_index=True)
@@ -274,7 +287,9 @@ def main():
 
 	## NUMBER OF UNUSED FEATURES (bb)
 	if args.bb_unused_feat_attack:
-		attack_results = attack_bb_query_extra(model, X_rand_users, y_rand_users, model_type=args.model_type, ensemble=args.ensemble)
+		attack_results = attack_bb_query_extra(model, X_rand_users, y_rand_users, model_type=args.model_type, \
+					 						num_classes=num_classes, feat_min=feat_min, feat_max=feat_max, \
+											ensemble=args.ensemble, data_name=args.data_name)
 
 if __name__ == '__main__':
 	main()

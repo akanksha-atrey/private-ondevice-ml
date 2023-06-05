@@ -16,11 +16,12 @@ source /home/aatrey/mypython/bin/activate
 echo "SLURM_JOBID: " $SLURM_JOBID
 echo "Running decision boundary attack..."
 
-noisebounds=$1
+dataname=$1
+noisebounds=$2
 
-python3 -m src.attack.db_attack -model_type 'rf' -noise_bounds $noisebounds -exp_num_query true
-python3 -m src.attack.db_attack -model_type 'lr' -noise_bounds $noisebounds -exp_num_query true
-python3 -m src.attack.db_attack -model_type 'dnn' -noise_bounds $noisebounds -exp_num_query true
+python3 -m src.attack.db_attack -data_name $dataname -model_type 'rf' -noise_bounds $noisebounds -exp_num_query true
+python3 -m src.attack.db_attack -data_name $dataname -model_type 'lr' -noise_bounds $noisebounds -exp_num_query true
+python3 -m src.attack.db_attack -data_name $dataname -model_type 'dnn' -noise_bounds $noisebounds -exp_num_query true
 
 wait
 

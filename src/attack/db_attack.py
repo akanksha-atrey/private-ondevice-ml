@@ -355,11 +355,19 @@ def main():
 	parser.add_argument('-exp_query_distribution', type=bool)
 	args = parser.parse_args()
 
-	X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
-	y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
-	y_test = y_test-1
+	if args.data_name == 'UCI_HAR':
+		X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
+		X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
+		y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+		y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+		y_test = y_test-1
+	elif args.data_name == 'MNIST':
+		X_train = pd.read_csv('./data/MNIST/X_train.csv', header=None)
+		y_train = pd.read_csv('./data/MNIST/y_train.csv', header=None).squeeze()
+		X_test = pd.read_csv('./data/MNIST/X_test.csv', header=None)
+		y_test = pd.read_csv('./data/MNIST/y_test.csv', header=None).squeeze()
+
+	num_classes = y_train.nunique()
 
 	print(y_train.value_counts())
 	print(y_test.value_counts())
@@ -367,16 +375,16 @@ def main():
 	#load model
 	ensemble = '_ensemble'+str(args.ensemble) if args.ensemble > 1 else ''
 	if args.model_type == 'rf':
-		with open('./models/{}/activity_recognition/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/rf{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'lr':
-		with open('./models/{}/activity_recognition/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/lr{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dt':
-		with open('./models/{}/activity_recognition/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
+		with open('./models/{}/attack/dt{}.pkl'.format(args.data_name, ensemble), 'rb') as f:
 			model = pkl.load(f)
 	elif args.model_type == 'dnn':
-		model = torch.load('./models/{}/activity_recognition/dnn{}.pt'.format(args.data_name, ensemble))
+		model = torch.load('./models/{}/attack/dnn{}.pt'.format(args.data_name, ensemble))
 
 	#pick random adversarial users
 	random.seed(10)

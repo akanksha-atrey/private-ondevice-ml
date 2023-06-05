@@ -16,10 +16,10 @@ source /home/aatrey/mypython/bin/activate
 echo "SLURM_JOBID: " $SLURM_JOBID
 echo "Starting to run bb unused feature attack..."
 
-modeltype=$1
-ensemble=$2
+dataname=$1
+modeltype=$2
 
-python3 -m src.attack.class_attack -model_type $modeltype -bb_unused_feat_attack true -ensemble $ensemble
+python3 -m src.attack.class_attack -data_name $dataname -model_type $modeltype -bb_unused_feat_attack true
 
 wait
 
