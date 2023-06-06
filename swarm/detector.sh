@@ -16,11 +16,13 @@ source /home/aatrey/mypython/bin/activate
 echo "SLURM_JOBID: " $SLURM_JOBID
 echo "Running defense detector..."
 
-modeltype=$1
-noisebounds=$2
-numqueries=$3
+dataname=$1
+modeltype=$2
+noisebounds=$3
+numqueries=$4
 
-python3 -m src.defense.defense_detector -model_type $modeltype -noise_bounds $noisebounds -num_queries $numqueries
+python3 -m src.defense.defense_detector -data_name $dataname -model_type $modeltype \
+                                        -noise_bounds $noisebounds -num_queries $numqueries
 
 wait
 

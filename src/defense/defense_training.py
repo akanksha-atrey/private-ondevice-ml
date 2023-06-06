@@ -234,7 +234,7 @@ def cv_dnn(X_train, y_train):
 
 	return rs.best_params_
 
-def train_dnn(X_train, y_train, X_test, y_test, num_classes):
+def train_dnn(X_train, y_train, X_test, y_test):
 	# run CV
 	cv_params = cv_dnn(X_train, y_train)
 
@@ -302,23 +302,22 @@ def main():
 	DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 	# Load dataset
-	X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
-	X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+	if args.data_name == 'UCI_HAR':
+		X_train = pd.read_csv('./data/{}/train/X_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
+		y_train = pd.read_csv('./data/{}/train/y_train.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
+		X_test = pd.read_csv('./data/{}/test/X_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
+		y_test = pd.read_csv('./data/{}/test/y_test.txt'.format(args.data_name), delim_whitespace=True, header=None).squeeze()
 
-	y_train = y_train-1
-	y_test = y_test-1
+		y_train = y_train-1
+		y_test = y_test-1
+	elif args.data_name == 'MNIST':
+		X_train = pd.read_csv('./data/MNIST/X_train.csv', header=None)
+		y_train = pd.read_csv('./data/MNIST/y_train.csv', header=None).squeeze()
+		X_test = pd.read_csv('./data/MNIST/X_test.csv', header=None)
+		y_test = pd.read_csv('./data/MNIST/y_test.csv', header=None).squeeze()
 
 	print("Train dataset shapes: {}, {}".format(X_train.shape, y_train.shape))
 	print("Test dataset shapes: {}, {}".format(X_test.shape, y_test.shape))
-
-	# Load subject information for train and test sets
-	subject_train = pd.read_csv('./data/{}/train/subject_train.txt'.format(args.data_name), delim_whitespace=True, header=None)
-	subject_test = pd.read_csv('./data/{}/test/subject_test.txt'.format(args.data_name), delim_whitespace=True, header=None)
-
-	print("Number of users in train set: ", subject_train.nunique()[0])
-	print("Number of users in test set: ", subject_test.nunique()[0])
 
 	# Convert to Tensor
 	train_dataset = TensorDataset(torch.from_numpy(X_train.values).float(), torch.from_numpy(y_train.values).long())
@@ -344,7 +343,7 @@ def main():
 		with open('./models/{}/attack_defense/lr.pkl'.format(args.data_name), 'wb') as f:
 			pkl.dump(model, f)
 	elif args.model_type == 'dnn':
-		model = train_dnn(out_encoder_train.detach(), y_train, out_encoder_test.detach(), y_test, num_classes=y_train.nunique())
+		model = train_dnn(out_encoder_train.detach(), y_train, out_encoder_test.detach(), y_test)
 		torch.save(model, './models/{}/attack_defense/dnn.pt'.format(args.data_name))
 
 if __name__ == '__main__':

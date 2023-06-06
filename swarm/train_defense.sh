@@ -17,9 +17,10 @@ module load python/3.9.1
 echo "SLURM_JOBID: " $SLURM_JOBID
 echo "Starting to train autoencoder based model..."
 
-modeltype=$1
+dataname=$1
+modeltype=$2
 
-python3 -m src.defense.defense_training -model_type $modeltype
+python3 -m src.defense.defense_training -data_name $dataname -model_type $modeltype
 
 echo "Done training the models!"
 
