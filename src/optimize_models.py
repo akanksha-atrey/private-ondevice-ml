@@ -6,6 +6,7 @@ Description: This file contains implementation to optimize pre-trained ML models
 
 from src.defense.defense_training import Autoencoder, Net
 
+import sys
 import os
 import pickle as pkl
 import pandas as pd
@@ -159,81 +160,100 @@ def encrypt_model(model_path, encrypted_model_path):
     with open(encrypted_model_path, 'wb') as file:
         file.write(ciphertext)
 
-def main():
+def main(system_type):
+
+	if system_type == 'defense':
+		model_folder = 'attack_defense'
+	elif system_type == 'baseline':
+		model_folder = 'attack'
+	else:
+		print('Error: System type needs to be provided (defense or baseline mode).')
+		sys.exit(1)
 
 	# Load dataset
-	X_train = pd.read_csv('./data/UCI_HAR/train/X_train.txt', delim_whitespace=True, header=None)
-	y_train = pd.read_csv('./data/UCI_HAR/train/y_train.txt', delim_whitespace=True, header=None).squeeze()
 	X_test = pd.read_csv('./data/UCI_HAR/test/X_test.txt', delim_whitespace=True, header=None)
 	y_test = pd.read_csv('./data/UCI_HAR/test/y_test.txt', delim_whitespace=True, header=None).squeeze()
-
-	y_train = y_train-1
 	y_test = y_test-1
-
-	print("Train dataset shapes: {}, {}".format(X_train.shape, y_train.shape))
 	print("Test dataset shapes: {}, {}".format(X_test.shape, y_test.shape))
 	
+	if system_type == 'defense':
+		### CONVERT AE
+		print('-------------AE-------------')
+		ae_model = torch.load('./models/UCI_HAR/{}/autoencoder.pt'.format(model_folder))
+		# save_path = './models/UCI_HAR/prototype/ae_quantized.pt'
+		# ae_quantized_model = post_training_quantization(ae_model, X_test, save_path)
 
-	### CONVERT AE
-	print('-------------AE-------------')
-	ae_model = torch.load('./models/UCI_HAR/attack_defense/autoencoder.pt')
-	# save_path = './models/UCI_HAR/prototype/ae_quantized.pt'
-	# ae_quantized_model = post_training_quantization(ae_model, X_test, save_path)
+		onnx_save_path = './models/UCI_HAR/{}/ae.onnx'.format(model_folder)
+		quantized_save_path = './models/UCI_HAR/{}/ae_quantized.onnx'.format(model_folder)
+		pytorch_to_onnx(ae_model, X_test.shape[1], onnx_save_path, quantized_save_path)
 
-	onnx_save_path = './models/UCI_HAR/prototype/ae.onnx'
-	quantized_save_path = './models/UCI_HAR/prototype/ae_quantized.onnx'
-	pytorch_to_onnx(ae_model, X_test.shape[1], onnx_save_path, quantized_save_path)
+		# inference using onnx runtime
+		onnx_pytorch_inference(quantized_save_path, ae_model, X_test.values, X_test.values, classification = False)
 
-	# inference using onnx runtime
-	onnx_pytorch_inference(quantized_save_path, ae_model, X_test.values, X_test.values, classification = False)
+		sess = rt.InferenceSession(quantized_save_path)
+		input_name = sess.get_inputs()[0].name
+		X_encoded = sess.run(None, {input_name: X_test.values.astype(np.float32)})[1]
 
-	sess = rt.InferenceSession(quantized_save_path)
-	input_name = sess.get_inputs()[0].name
-	X_encoded = sess.run(None, {input_name: X_test.values.astype(np.float32)})[1]
+		# save encrypted file
+		encrypt_model(quantized_save_path, './models/UCI_HAR/{}/ae_quantized_encrypted.onnx'.format(model_folder))
+	else:
+		X_encoded = X_test.to_numpy()
 
-	# save encrypted file
-	encrypt_model(quantized_save_path, './models/UCI_HAR/prototype/ae_quantized_encrypted.onnx')
 
 	### CONVERT RF
 	print('-------------RF-------------')
-	with open('./models/UCI_HAR/attack_defense/rf.pkl', 'rb') as f:
+	with open('./models/UCI_HAR/{}/rf.pkl'.format(model_folder), 'rb') as f:
 		model = pkl.load(f)
-	save_path = './models/UCI_HAR/prototype/rf.onnx'
+	save_path = './models/UCI_HAR/{}/rf.onnx'.format(model_folder)
 	sklearn_to_onnx(model, X_encoded.shape[1], save_path)
 
 	# inference using onnx runtime
 	onnx_sklearn_inference(save_path, model, X_encoded, y_test)
 
 	# save encrypted file
-	encrypt_model(save_path, './models/UCI_HAR/prototype/rf_encrypted.onnx')
-
+	encrypt_model(save_path, './models/UCI_HAR/{}/rf_encrypted.onnx'.format(model_folder))
+	
+	sess = rt.InferenceSession(save_path)
+	input_name = sess.get_inputs()[0].name
+	pred = sess.run(None, {input_name: X_encoded.astype(np.float32)})[0]
+	print('RF Accuracy Test All: ', sum(pred == y_test) / len(y_test))
 
 	### CONVERT LR
 	print('-------------LR-------------')
-	with open('./models/UCI_HAR/attack_defense/lr.pkl', 'rb') as f:
+	with open('./models/UCI_HAR/{}/lr.pkl'.format(model_folder), 'rb') as f:
 		model = pkl.load(f)
-	save_path = './models/UCI_HAR/prototype/lr.onnx'
+	save_path = './models/UCI_HAR/{}/lr.onnx'.format(model_folder)
 	sklearn_to_onnx(model, X_encoded.shape[1], save_path)
 
 	# inference using onnx runtime
 	onnx_sklearn_inference(save_path, model, X_encoded, y_test)
 
 	# save encrypted file
-	encrypt_model(save_path, './models/UCI_HAR/prototype/lr_encrypted.onnx')
+	encrypt_model(save_path, './models/UCI_HAR/{}/lr_encrypted.onnx'.format(model_folder))
+
+	sess = rt.InferenceSession(save_path)
+	input_name = sess.get_inputs()[0].name
+	pred = sess.run(None, {input_name: X_encoded.astype(np.float32)})[0]
+	print('LR Accuracy Test All: ', sum(pred == y_test) / len(y_test))
 
 
 	### CONVERT DNN
 	print('-------------DNN-------------')
-	model = torch.load('./models/UCI_HAR/attack_defense/dnn.pt')
-	onnx_save_path = './models/UCI_HAR/prototype/dnn.onnx'
-	quantized_save_path = './models/UCI_HAR/prototype/dnn_quantized.onnx'
+	model = torch.load('./models/UCI_HAR/{}/dnn.pt'.format(model_folder))
+	onnx_save_path = './models/UCI_HAR/{}/dnn.onnx'.format(model_folder)
+	quantized_save_path = './models/UCI_HAR/{}/dnn_quantized.onnx'.format(model_folder)
 	pytorch_to_onnx(model, X_encoded.shape[1], onnx_save_path, quantized_save_path)
 
 	# inference using onnx runtime
 	onnx_pytorch_inference(quantized_save_path, model, X_encoded, y_test)
 
 	# save encrypted file
-	encrypt_model(quantized_save_path, './models/UCI_HAR/prototype/dnn_quantized_encrypted.onnx')
+	encrypt_model(quantized_save_path, './models/UCI_HAR/{}/dnn_quantized_encrypted.onnx'.format(model_folder))
+
+	sess = rt.InferenceSession(quantized_save_path)
+	input_name = sess.get_inputs()[0].name
+	pred = sess.run(None, {input_name: X_encoded.astype(np.float32)})[0]
+	print('DNN Accuracy Test All: ', sum(np.array(pred).reshape(-1, 6).argmax(axis = 1) == y_test) / len(y_test))
 
 if __name__ == '__main__':
-	main()
+	main(sys.argv[1])
