@@ -1,3 +1,5 @@
+import os
+import io
 import sys
 import time
 from hwcounter import count, count_end
@@ -5,10 +7,17 @@ from hwcounter import count, count_end
 import onnxruntime as rt
 import numpy as np
 import pandas as pd
-import pickle as pkl
+
+import nacl.secret
 
 from scipy.spatial.distance import cdist
 from scipy.stats import entropy
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# Encryption key (generated via nacl.utils.random(nacl.secret.SecretBox.KEY_SIZE))
+key = b'$\xf4\x01A\x93\x8ce\xb0?\xba\xfa\x9e\x9925O\xdf\xd6\x1b~\xccc\xfb\x8cK=\xaf/\xcd\xdb\x07\xa5'
 
 # Thresholds
 alpha = 0.33
@@ -17,10 +26,10 @@ gamma = 0.33
 detector_threshold = 0.2
 
 # Path to the bundled ONNX model file
-ae_model_path = './models/UCI_HAR/prototype/ae_quantized.onnx'
-rf_model_path = './models/UCI_HAR/prototype/rf.onnx'
-lr_model_path = './models/UCI_HAR/prototype/lr.onnx'
-dnn_model_path = './models/UCI_HAR/prototype/dnn_quantized.onnx'
+ae_model_path = './models/ae_quantized_encrypted.onnx'
+rf_model_path = './models/rf_encrypted.onnx'
+lr_model_path = './models/lr_encrypted.onnx'
+dnn_model_path = './models/dnn_quantized_encrypted.onnx'
 
 def run_inference(X, ae_rt_session, model_rt_session, model_type):
     # Perform inference using the loaded ONNX model
@@ -50,20 +59,20 @@ def run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, pr
     mse = (X - X_decoded)**2
 
     # Construct entropy of classes
-    prior_outputs[output] += 1
-    output_probability = [v/sum(prior_outputs.values()) for k,v in prior_outputs.items()]
+    prior_outputs.iloc[output] += 1
+    output_probability = prior_outputs.iloc[:,0]/sum(prior_outputs.values)
     output_entropy = entropy(output_probability)
 
     # Save output
     encoding_df = pd.DataFrame(X_encoded, columns = ['Column_' + str(i) for i in range(X_encoded.shape[1])])
     encoding_df['pred_c'] = output
-    prior_queries = encoding_df if len(prior_queries) == 0 is None else prior_queries.append(encoding_df, ignore_index = True)
+    prior_queries = encoding_df if len(prior_queries) == 0 else prior_queries.append(encoding_df, ignore_index = True)
 
     stats = {'pred_c': output, \
 			'ed_median': ed_median, \
 			'mse_mean': np.mean(mse), \
 			'output_entropy': output_entropy}    
-    prior_stats = pd.DataFrame(stats, index=[0]) if len(prior_stats) == 0 is None else prior_stats.append(pd.Series(stats), ignore_index = True)
+    prior_stats = pd.DataFrame(stats, index=[0]) if len(prior_stats) == 0 else prior_stats.append(pd.Series(stats), ignore_index = True)
     prior_stats['mse_cumulative_sum'] = prior_stats.groupby(['pred_c'])['mse_mean'].apply(lambda x: x.shift().expanding().sum())
     prior_stats['ed_cumulative_sum'] = prior_stats.groupby(['pred_c'])['ed_median'].apply(lambda x: x.shift().expanding().sum())
     
@@ -81,34 +90,61 @@ def run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, pr
 
     return df['y_pred'].values[-1], prior_queries, prior_stats, prior_outputs
 
+def encrypt_file(df, file_path):
+    nonce = os.urandom(nacl.secret.SecretBox.NONCE_SIZE)
+    box = nacl.secret.SecretBox(key)
+
+    plaintext = df.to_csv(index=False).encode('utf-8')
+    ciphertext = box.encrypt(plaintext, nonce)
+    with open(file_path, 'wb') as file:
+        file.write(ciphertext)
+
+def decrypt_file(file_path):
+    box = nacl.secret.SecretBox(key)
+
+    with open(file_path, 'rb') as file:
+        ciphertext = file.read()
+
+    plaintext = box.decrypt(ciphertext)
+    decrypted_df = pd.read_csv(io.StringIO(plaintext.decode('utf-8')))
+
+    return decrypted_df
+
+def decrypt_model(model_path):
+    box = nacl.secret.SecretBox(key)
+    
+    with open(model_path, 'rb') as file:
+        ciphertext = file.read()
+
+    return box.decrypt(ciphertext)
+
 def main(model_type):
     start_cycles = count()
     start_time = time.time()
 
     # Read input and other resource files
-    X = np.genfromtxt('./prototype/data/input.txt').reshape(1, -1)
+    X = np.genfromtxt('./data/input.txt').reshape(1, -1)
 
     try:
-        prior_queries = pd.read_csv('./prototype/data/prior_queries.csv')
-        prior_stats = pd.read_csv('./prototype/data/prior_stats.csv')
-        with open('./prototype/data/prior_outputs.pkl', 'rb') as f:
-            prior_outputs = pkl.load(f)
+        prior_queries = decrypt_file('./data/prior_queries.pkl')
+        prior_stats = decrypt_file('./data/prior_stats.pkl')
+        prior_outputs = decrypt_file('./data/prior_outputs.pkl')
     except:
         prior_queries = pd.DataFrame()
         prior_stats = pd.DataFrame()
-        prior_outputs = dict.fromkeys(range(6),0)
+        prior_outputs = pd.DataFrame.from_dict(dict.fromkeys(range(6),0), orient='index')
     
-    train_out = pd.read_csv('./prototype/data/train_detector.csv')
+    train_out = decrypt_file('./data/train_detector.pkl')
     train_out = train_out[train_out['model_type'] == model_type]
 
     # Load the ONNX model with ONNX Runtime
-    ae_ort_session = rt.InferenceSession(ae_model_path)
+    ae_ort_session = rt.InferenceSession(decrypt_model(ae_model_path))
     if model_type == 'rf':
-        model_ort_session = rt.InferenceSession(rf_model_path)
+        model_ort_session = rt.InferenceSession(decrypt_model(rf_model_path))
     elif model_type == 'lr':
-        model_ort_session = rt.InferenceSession(lr_model_path)
+        model_ort_session = rt.InferenceSession(decrypt_model(lr_model_path))
     elif model_type == 'dnn':
-        model_ort_session = rt.InferenceSession(dnn_model_path)
+        model_ort_session = rt.InferenceSession(decrypt_model(dnn_model_path))
     else:
         print("Error: Model type is not RF, LR, or DNN.")
         sys.exit(1)
@@ -118,11 +154,11 @@ def main(model_type):
 
     # Run detector
     detector_output, prior_queries, prior_stats, prior_outputs = run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, prior_outputs, train_out)
-    prior_queries.to_csv('./prototype/data/prior_queries.csv', index=False)
-    prior_stats.to_csv('./prototype/data/prior_stats.csv', index=False)
-    print(detector_output)
-    with open('./prototype/data/prior_outputs.pkl', 'wb') as f:
-        pkl.dump(prior_outputs, f)
+    
+    # Save output file with correct permissions
+    encrypt_file(prior_queries, './data/prior_queries.pkl')
+    encrypt_file(prior_stats, './data/prior_stats.pkl')
+    encrypt_file(prior_outputs, './data/prior_outputs.pkl')
 
     # Print output based on detector out
     if detector_output == 1:
@@ -133,7 +169,7 @@ def main(model_type):
     # Add runtime and cycles
     total_time = time.time() - start_time
     total_cycles = count_end() - start_cycles
-    with open('./prototype/data/runtime.txt', 'a') as f:
+    with open('./data/runtime.txt', 'a') as f:
         f.write('{}, {}\n'.format(total_time, total_cycles))
 
 if __name__ == '__main__':

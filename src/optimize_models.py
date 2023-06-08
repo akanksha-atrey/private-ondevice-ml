@@ -6,6 +6,7 @@ Description: This file contains implementation to optimize pre-trained ML models
 
 from src.defense.defense_training import Autoencoder, Net
 
+import os
 import pickle as pkl
 import pandas as pd
 import numpy as np
@@ -19,8 +20,12 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 import onnxruntime as rt
 from onnxruntime.quantization import quantize_dynamic, QuantType
-from onnx import numpy_helper
+from onnx import numpy_helper, load
 
+import nacl.secret
+
+# Encryption key (generated via nacl.utils.random(nacl.secret.SecretBox.KEY_SIZE))
+key = b'$\xf4\x01A\x93\x8ce\xb0?\xba\xfa\x9e\x9925O\xdf\xd6\x1b~\xccc\xfb\x8cK=\xaf/\xcd\xdb\x07\xa5'
 
 def sklearn_to_onnx(model, input_size, save_path):
 	initial_type = [('float_input', FloatTensorType([None, input_size]))]
@@ -143,6 +148,17 @@ def post_training_quantization(model, X, save_path):
 
 	return quantized_model
 
+def encrypt_model(model_path, encrypted_model_path):
+    onnx_model = load(model_path)
+    model_bytes = onnx_model.SerializeToString()
+    
+    nonce = os.urandom(nacl.secret.SecretBox.NONCE_SIZE)
+    box = nacl.secret.SecretBox(key)
+    ciphertext = box.encrypt(model_bytes, nonce)
+
+    with open(encrypted_model_path, 'wb') as file:
+        file.write(ciphertext)
+
 def main():
 
 	# Load dataset
@@ -175,6 +191,8 @@ def main():
 	input_name = sess.get_inputs()[0].name
 	X_encoded = sess.run(None, {input_name: X_test.values.astype(np.float32)})[1]
 
+	# save encrypted file
+	encrypt_model(quantized_save_path, './models/UCI_HAR/prototype/ae_quantized_encrypted.onnx')
 
 	### CONVERT RF
 	print('-------------RF-------------')
@@ -185,6 +203,9 @@ def main():
 
 	# inference using onnx runtime
 	onnx_sklearn_inference(save_path, model, X_encoded, y_test)
+
+	# save encrypted file
+	encrypt_model(save_path, './models/UCI_HAR/prototype/rf_encrypted.onnx')
 
 
 	### CONVERT LR
@@ -197,6 +218,9 @@ def main():
 	# inference using onnx runtime
 	onnx_sklearn_inference(save_path, model, X_encoded, y_test)
 
+	# save encrypted file
+	encrypt_model(save_path, './models/UCI_HAR/prototype/lr_encrypted.onnx')
+
 
 	### CONVERT DNN
 	print('-------------DNN-------------')
@@ -207,6 +231,9 @@ def main():
 
 	# inference using onnx runtime
 	onnx_pytorch_inference(quantized_save_path, model, X_encoded, y_test)
+
+	# save encrypted file
+	encrypt_model(quantized_save_path, './models/UCI_HAR/prototype/dnn_quantized_encrypted.onnx')
 
 if __name__ == '__main__':
 	main()
