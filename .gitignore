@@ -9,3 +9,6 @@ updates/
 figures/
 papers/
 results/
+prototype/build/
+prototype/dist/
+prototype/soda.gitignore
