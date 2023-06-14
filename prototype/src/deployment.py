@@ -2,6 +2,7 @@ import os
 import io
 import sys
 import time
+import threading
 from hwcounter import count, count_end
 
 import onnxruntime as rt
@@ -44,8 +45,7 @@ def run_inference(X, ae_rt_session, model_rt_session, model_type):
 
     return X_encoded, X_decoded, output[0]
 
-def run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, prior_outputs, train_out):
-    
+def run_detector_dist(X_encoded, output, prior_queries, detector_components):
     # Measure difference in input to closest element in class c
     ed_median = 0
     if len(prior_queries) != 0:
@@ -54,27 +54,36 @@ def run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, pr
         if len(prior_queries_same_class) != 0:
              distances = cdist(X_encoded.reshape(1,-1), prior_queries_same_class.drop(columns=['pred_c']), metric='euclidean')
              ed_median = np.median(distances, axis=1)[0]
-    
-    # Measure reconstruction error (x vs ae(x)) to separate out anomalies/OOD queries
-    mse = (X - X_decoded)**2
-
-    # Construct entropy of classes
-    prior_outputs.iloc[output] += 1
-    output_probability = prior_outputs.iloc[:,0]/sum(prior_outputs.values)
-    output_entropy = entropy(output_probability)
 
     # Save output
     encoding_df = pd.DataFrame(X_encoded, columns = ['Column_' + str(i) for i in range(X_encoded.shape[1])])
     encoding_df['pred_c'] = output
     prior_queries = encoding_df if len(prior_queries) == 0 else prior_queries.append(encoding_df, ignore_index = True)
+    detector_components[0] = prior_queries
+    detector_components[3] = ed_median
 
+def run_detector_reconstruction(X, X_decoded, detector_components):
+    # Measure reconstruction error (x vs ae(x)) to separate out anomalies/OOD queries
+    mse = (X - X_decoded)**2
+    detector_components[4] = np.mean(mse)
+
+def run_detector_entropy(output, prior_outputs, detector_components):
+    # Construct entropy of classes
+    prior_outputs.iloc[output] += 1
+    output_probability = prior_outputs.iloc[:,0]/sum(prior_outputs.values)
+    output_entropy = entropy(output_probability)
+    detector_components[2] = prior_outputs
+    detector_components[5] = output_entropy
+
+def run_detector(detector_components, output, prior_stats, train_out):
     stats = {'pred_c': output, \
-			'ed_median': ed_median, \
-			'mse_mean': np.mean(mse), \
-			'output_entropy': output_entropy}    
+			'ed_median': detector_components[3], \
+			'mse_mean': detector_components[4], \
+			'output_entropy': detector_components[5]}    
     prior_stats = pd.DataFrame(stats, index=[0]) if len(prior_stats) == 0 else prior_stats.append(pd.Series(stats), ignore_index = True)
     prior_stats['mse_cumulative_sum'] = prior_stats.groupby(['pred_c'])['mse_mean'].apply(lambda x: x.shift().expanding().sum())
     prior_stats['ed_cumulative_sum'] = prior_stats.groupby(['pred_c'])['ed_median'].apply(lambda x: x.shift().expanding().sum())
+    detector_components[1] = prior_stats
     
     # Get final detector output
     prior_stats['num_query'] = np.arange(1, len(prior_stats) + 1)
@@ -88,7 +97,7 @@ def run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, pr
     df.loc[df['detector_out'] > df['cummax']+(df['cummax'] * detector_threshold), 'y_pred'] = 1 #adversary
     df.loc[df['detector_out'] < df['cummax']-(df['cummax'] * detector_threshold), 'y_pred'] = 1 #adversary
 
-    return df['y_pred'].values[-1], prior_queries, prior_stats, prior_outputs
+    return df['y_pred'].values[-1]
 
 def encrypt_file(df, file_path):
     nonce = os.urandom(nacl.secret.SecretBox.NONCE_SIZE)
@@ -152,13 +161,21 @@ def main(model_type):
     # Run inference
     X_encoded, X_decoded, output = run_inference(X, ae_ort_session, model_ort_session, model_type)
 
-    # Run detector
-    detector_output, prior_queries, prior_stats, prior_outputs = run_detector(X, X_encoded, X_decoded, output, prior_queries, prior_stats, prior_outputs, train_out)
-    
-    # Save output file with correct permissions
-    encrypt_file(prior_queries, './data/prior_queries.pkl')
-    encrypt_file(prior_stats, './data/prior_stats.pkl')
-    encrypt_file(prior_outputs, './data/prior_outputs.pkl')
+    # Run detector components using threads for concurrent processing
+    detector_components = [0] * 6 # prior_queries, prior_stats, prior_outputs, ed_median, mse_mean, output_entropy
+    t1 = threading.Thread(target=run_detector_dist, name='detector_dist', args=(X_encoded, output, prior_queries, detector_components))
+    t2 = threading.Thread(target=run_detector_reconstruction, name='detector_rec', args=(X, X_decoded, detector_components)) 
+    t3 = threading.Thread(target=run_detector_entropy, name='detector_ent', args=(output, prior_outputs, detector_components))
+ 
+    t1.start()
+    t2.start()
+    t3.start()
+ 
+    t1.join()
+    t2.join()
+    t3.join()
+
+    detector_output = run_detector(detector_components, output, prior_stats, train_out)
 
     # Print output based on detector out
     if detector_output == 1:
@@ -171,6 +188,11 @@ def main(model_type):
     total_cycles = count_end() - start_cycles
     with open('./data/runtime.txt', 'a') as f:
         f.write('{}, {}\n'.format(total_time, total_cycles))
+    
+    # Save output file with correct permissions
+    encrypt_file(detector_components[0], './data/prior_queries.pkl')
+    encrypt_file(detector_components[1], './data/prior_stats.pkl')
+    encrypt_file(detector_components[2], './data/prior_outputs.pkl')
 
 if __name__ == '__main__':
     # Get the input file from command-line arguments
