@@ -366,20 +366,27 @@ def plot_defense(df, data_name, alpha=0.33, beta=0.33, gamma=0.33, detector_thre
     df.loc[df['data']=='train', 'y_true'] = 0
     df.loc[df['data']=='test', 'y_true'] = 0
 
+    # df['y_rand'] = np.random.choice([0, 1], size=len(df))
+
     df_out = df.groupby(['model_type', 'num_query']).apply(lambda x: pd.Series({'precision': precision_score(x['y_true'], x['y_pred']), \
                                                                                 'recall': recall_score(x['y_true'], x['y_pred']), \
-                                                                                'f1_score': f1_score(x['y_true'], x['y_pred']) })).reset_index()
+                                                                                'acc': accuracy_score(x['y_true'], x['y_pred']) })).reset_index()
+    df_out[['precision', 'recall', 'acc']] = df_out[['precision', 'recall', 'acc']]*100
     print(df_out)
-    df_out[['precision', 'recall', 'f1_score']] = df_out[['precision', 'recall', 'f1_score']]*100
     fig, ax = plt.subplots()
     # sns.lineplot(data=df_out, x='num_query', y='f1_score', hue='model_type')#, linestyle='-', label='Accuracy')
     sns.lineplot(data=df_out, x='num_query', y='precision', hue='model_type', linestyle='-.', label='Precision', hue_order = ['rf', 'lr', 'dnn'])
     sns.lineplot(data=df_out, x='num_query', y='recall', hue='model_type', linestyle='-', label='Recall', hue_order = ['rf', 'lr', 'dnn'])
     plt.xlabel('Number of Queries')
     plt.ylabel('Detector Performance (%)')    
-    custom_lines = [Line2D([0], [0], color='black', linestyle='-.', label='Precision'),
+    custom_lines = [Line2D([], [], color="none", label='Model Type'),
+    				Line2D([0], [0], color='C0', linestyle='-', label='RF'),
+    				Line2D([0], [0], color='C1', linestyle='-', label='LR'),
+    				Line2D([0], [0], color='C2', linestyle='-', label='DNN'),
+    				Line2D([], [], color="none", label='Measure'),
+    				Line2D([0], [0], color='black', linestyle='-.', label='Precision'),
                     Line2D([0], [0], color='black', linestyle='-', label='Recall')]
-    ax.legend(handles=custom_lines, labels=['Precision', 'Recall'])
+    ax.legend(handles=custom_lines, labels=['Model Type', 'RF', 'LR', 'DNN', 'Measure', 'Precision', 'Recall'])
     plt.savefig('./results/{}/defense/detector_performance.pdf'.format(data_name), bbox_inches='tight')
     plt.clf()
 
@@ -402,13 +409,19 @@ def plot_defense(df, data_name, alpha=0.33, beta=0.33, gamma=0.33, detector_thre
         df_multi_threshold = df_out if df_multi_threshold is None else pd.concat([df_multi_threshold, df_out])
         
     df_multi_threshold = df_multi_threshold[df_multi_threshold['num_query'] == 50].reset_index()
+    fig, ax = plt.subplots()
     sns.lineplot(data = df_multi_threshold, x = 'threshold', y = 'precision', hue = 'model_type', linestyle='-.', hue_order = ['rf', 'lr', 'dnn'])
     sns.lineplot(data = df_multi_threshold, x = 'threshold', y = 'recall', hue = 'model_type', linestyle='-', hue_order = ['rf', 'lr', 'dnn'])
     plt.xlabel('Detector Threshold')
     plt.ylabel('Detector Performance (%)')
-    handles, labels = plt.gca().get_legend_handles_labels()
-    custom_labels = ['RF', 'LR', 'DNN']
-    plt.legend(handles, custom_labels)
+    custom_lines = [Line2D([], [], color="none", label='Model Type'),
+    				Line2D([0], [0], color='C0', linestyle='-', label='RF'),
+    				Line2D([0], [0], color='C1', linestyle='-', label='LR'),
+    				Line2D([0], [0], color='C2', linestyle='-', label='DNN'),
+    				Line2D([], [], color="none", label='Measure'),
+    				Line2D([0], [0], color='black', linestyle='-.', label='Precision'),
+                    Line2D([0], [0], color='black', linestyle='-', label='Recall')]
+    ax.legend(handles=custom_lines, labels=['Model Type', 'RF', 'LR', 'DNN', 'Measure', 'Precision', 'Recall'])
     plt.savefig('./results/{}/defense/detector_thresholds.pdf'.format(data_name), bbox_inches='tight')
     plt.clf()
 
@@ -425,12 +438,17 @@ def plot_defense(df, data_name, alpha=0.33, beta=0.33, gamma=0.33, detector_thre
     sns.lineplot(data=df, x='num_query', y='mse_time', label='MSE', hue='model_type', hue_order = ['rf', 'lr', 'dnn'], linestyle = '--')
     sns.lineplot(data=df, x='num_query', y='entropy_time', label='Entropy', hue='model_type', hue_order = ['rf', 'lr', 'dnn'], linestyle = '-.')
     plt.legend(title='Detector Component')
-    custom_lines = [Line2D([0], [0], color='black', linestyle='-', label='Distance'),
+    custom_lines = [Line2D([], [], color="none", label='Model Type'),
+    				Line2D([0], [0], color='C0', linestyle='-', label='RF'),
+    				Line2D([0], [0], color='C1', linestyle='-', label='LR'),
+    				Line2D([0], [0], color='C2', linestyle='-', label='DNN'),
+    				Line2D([], [], color="none", label='Component'),
+    				Line2D([0], [0], color='black', linestyle='-', label='Distance'),
                     Line2D([0], [0], color='black', linestyle='--', label='Reconstruction'),
                     Line2D([0], [0], color='black', linestyle='-.', label='Entropy')]
-    ax.legend(handles=custom_lines, labels=['Query Distance', 'Reconstruction Error', 'Output Entropy'])
+    ax.legend(handles=custom_lines, labels=['Model Type', 'RF', 'LR', 'DNN', 'Component', 'Query Distance', 'Reconstruction Error', 'Output Entropy'])
     plt.xlabel('Number of Queries')
-    plt.ylabel('Normalized Runtime')
+    plt.ylabel('Normalized Runtime (s)')
     # plt.yscale('log')
     plt.savefig('./results/{}/defense/detector_runtime.pdf'.format(data_name), bbox_inches='tight')
     plt.clf()
