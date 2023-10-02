@@ -148,7 +148,7 @@ def plot_db_query_dist(df, data_name):
     
     plt.xlabel('Seed Class')
     plt.ylabel('Distance Between Queries')
-    plt.legend(loc='best', title='Model Type')
+    plt.legend(loc='lower left', title='Model Type')
 
     plt.savefig('./results/{}/attack/attack_db_query_dist.pdf'.format(data_name), bbox_inches='tight')
     plt.clf()
