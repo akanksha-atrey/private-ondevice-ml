@@ -4,12 +4,14 @@ This repository contains the implementation of SODA, a secure on-device applicat
 
 If you use this code or are inspired by our methodology, please cite our SEC paper:
 
+```
 @inproceedings{atrey2023soda,
   title={{SODA}: Protecting Proprietary Information in On-Device Machine Learning Models},
   author={Atrey, Akanksha and Sinha, Ritwik and Mitra, Saayan and Shenoy, Prashant},
   booktitle={{ACM/IEEE Symposium on Edge Computing (SEC)}},
   year={2023}
 }
+```
 
 Please direct all queries to Akanksha Atrey (aatrey at cs dot umass dot edu) or open an issue in this repository.
 
